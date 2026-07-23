@@ -6,14 +6,14 @@ import (
 	"strings"
 
 	"github.com/OffchainLabs/go-bitfield"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	eth "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	validatorpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1/validator-client"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
-	"github.com/OffchainLabs/prysm/v6/validator/keymanager/remote-web3signer/types"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	eth "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	validatorpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1/validator-client"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
+	"github.com/OffchainLabs/prysm/v7/validator/keymanager/remote-web3signer/types"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
@@ -40,6 +40,22 @@ func AggregationBits() []byte {
 		return bitfield.NewBitvector128()
 	case 8:
 		return bitfield.NewBitvector8()
+	default:
+		return nil
+	}
+}
+
+func CommitteeBits() []byte {
+	currSize := new(eth.AttestationElectra).CommitteeBits.Len()
+	switch currSize {
+	case 64:
+		b := bitfield.NewBitvector64()
+		b.SetBitAt(0, true)
+		return b
+	case 4:
+		b := bitfield.NewBitvector4()
+		b.SetBitAt(0, true)
+		return b
 	default:
 		return nil
 	}
@@ -85,8 +101,6 @@ func GetMockSignRequest(t string) *validatorpb.SignRequest {
 			SigningSlot: 0,
 		}
 	case "AGGREGATE_AND_PROOF_V2":
-		committeeBits := bitfield.NewBitvector64()
-		committeeBits.SetBitAt(0, true)
 		return &validatorpb.SignRequest{
 			PublicKey:       make([]byte, fieldparams.BLSPubkeyLength),
 			SigningRoot:     make([]byte, fieldparams.RootLength),
@@ -106,7 +120,7 @@ func GetMockSignRequest(t string) *validatorpb.SignRequest {
 							},
 						},
 						Signature:     make([]byte, 96),
-						CommitteeBits: committeeBits,
+						CommitteeBits: CommitteeBits(),
 					},
 					SelectionProof: make([]byte, fieldparams.BLSSignatureLength),
 				},

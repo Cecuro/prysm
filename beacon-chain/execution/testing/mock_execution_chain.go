@@ -9,12 +9,12 @@ import (
 	"net/http/httptest"
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/async/event"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/execution/types"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/async/event"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/execution/types"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	gethTypes "github.com/ethereum/go-ethereum/core/types"
@@ -37,6 +37,7 @@ type Chain struct {
 	CurrError         error
 	Endpoints         []string
 	Errors            []error
+	NotConnected      bool
 }
 
 // GenesisTime represents a static past date - JAN 01 2000.
@@ -119,8 +120,8 @@ func (*Chain) ClearPreGenesisData() {
 	// no-op
 }
 
-func (*Chain) ExecutionClientConnected() bool {
-	return true
+func (m *Chain) ExecutionClientConnected() bool {
+	return !m.NotConnected
 }
 
 func (m *Chain) ExecutionClientEndpoint() string {
@@ -147,7 +148,7 @@ type RPCClient struct {
 
 func (*RPCClient) Close() {}
 
-func (r *RPCClient) CallContext(ctx context.Context, obj interface{}, methodName string, args ...interface{}) error {
+func (r *RPCClient) CallContext(ctx context.Context, obj any, methodName string, args ...any) error {
 	if r.BlockNumMap != nil && methodName == "eth_getBlockByNumber" {
 		val, ok := args[0].(string)
 		if !ok {

@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/api/server/structs"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
-	"github.com/OffchainLabs/prysm/v6/validator/client/beacon-api/mock"
-	testhelpers "github.com/OffchainLabs/prysm/v6/validator/client/beacon-api/test-helpers"
+	"github.com/OffchainLabs/prysm/v7/api/server/structs"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
+	"github.com/OffchainLabs/prysm/v7/validator/client/beacon-api/mock"
+	testhelpers "github.com/OffchainLabs/prysm/v7/validator/client/beacon-api/test-helpers"
 	"github.com/pkg/errors"
 	"go.uber.org/mock/gomock"
 )
@@ -28,8 +28,8 @@ func TestSubmitSignedAggregateSelectionProof_Valid(t *testing.T) {
 
 	ctx := t.Context()
 	headers := map[string]string{"Eth-Consensus-Version": version.String(signedAggregateAndProof.Message.Version())}
-	jsonRestHandler := mock.NewMockJsonRestHandler(ctrl)
-	jsonRestHandler.EXPECT().Post(
+	handler := mock.NewMockHandler(ctrl)
+	handler.EXPECT().Post(
 		gomock.Any(),
 		"/eth/v2/validator/aggregate_and_proofs",
 		headers,
@@ -42,7 +42,7 @@ func TestSubmitSignedAggregateSelectionProof_Valid(t *testing.T) {
 	attestationDataRoot, err := signedAggregateAndProof.Message.Aggregate.Data.HashTreeRoot()
 	require.NoError(t, err)
 
-	validatorClient := &beaconApiValidatorClient{jsonRestHandler: jsonRestHandler}
+	validatorClient := &beaconApiValidatorClient{handler: handler}
 	resp, err := validatorClient.submitSignedAggregateSelectionProof(ctx, &ethpb.SignedAggregateSubmitRequest{
 		SignedAggregateAndProof: signedAggregateAndProof,
 	})
@@ -60,8 +60,8 @@ func TestSubmitSignedAggregateSelectionProof_BadRequest(t *testing.T) {
 
 	ctx := t.Context()
 	headers := map[string]string{"Eth-Consensus-Version": version.String(signedAggregateAndProof.Message.Version())}
-	jsonRestHandler := mock.NewMockJsonRestHandler(ctrl)
-	jsonRestHandler.EXPECT().Post(
+	handler := mock.NewMockHandler(ctrl)
+	handler.EXPECT().Post(
 		gomock.Any(),
 		"/eth/v2/validator/aggregate_and_proofs",
 		headers,
@@ -71,7 +71,7 @@ func TestSubmitSignedAggregateSelectionProof_BadRequest(t *testing.T) {
 		errors.New("bad request"),
 	).Times(1)
 
-	validatorClient := &beaconApiValidatorClient{jsonRestHandler: jsonRestHandler}
+	validatorClient := &beaconApiValidatorClient{handler: handler}
 	_, err = validatorClient.submitSignedAggregateSelectionProof(ctx, &ethpb.SignedAggregateSubmitRequest{
 		SignedAggregateAndProof: signedAggregateAndProof,
 	})
@@ -93,8 +93,8 @@ func TestSubmitSignedAggregateSelectionProofElectra_Valid(t *testing.T) {
 	ctx := t.Context()
 	expectedVersion := version.String(slots.ToForkVersion(signedAggregateAndProofElectra.Message.Aggregate.Data.Slot))
 	headers := map[string]string{"Eth-Consensus-Version": expectedVersion}
-	jsonRestHandler := mock.NewMockJsonRestHandler(ctrl)
-	jsonRestHandler.EXPECT().Post(
+	handler := mock.NewMockHandler(ctrl)
+	handler.EXPECT().Post(
 		gomock.Any(),
 		"/eth/v2/validator/aggregate_and_proofs",
 		headers,
@@ -107,7 +107,7 @@ func TestSubmitSignedAggregateSelectionProofElectra_Valid(t *testing.T) {
 	attestationDataRoot, err := signedAggregateAndProofElectra.Message.Aggregate.Data.HashTreeRoot()
 	require.NoError(t, err)
 
-	validatorClient := &beaconApiValidatorClient{jsonRestHandler: jsonRestHandler}
+	validatorClient := &beaconApiValidatorClient{handler: handler}
 	resp, err := validatorClient.submitSignedAggregateSelectionProofElectra(ctx, &ethpb.SignedAggregateSubmitElectraRequest{
 		SignedAggregateAndProof: signedAggregateAndProofElectra,
 	})
@@ -130,8 +130,8 @@ func TestSubmitSignedAggregateSelectionProofElectra_BadRequest(t *testing.T) {
 	ctx := t.Context()
 	expectedVersion := version.String(slots.ToForkVersion(signedAggregateAndProofElectra.Message.Aggregate.Data.Slot))
 	headers := map[string]string{"Eth-Consensus-Version": expectedVersion}
-	jsonRestHandler := mock.NewMockJsonRestHandler(ctrl)
-	jsonRestHandler.EXPECT().Post(
+	handler := mock.NewMockHandler(ctrl)
+	handler.EXPECT().Post(
 		gomock.Any(),
 		"/eth/v2/validator/aggregate_and_proofs",
 		headers,
@@ -141,7 +141,7 @@ func TestSubmitSignedAggregateSelectionProofElectra_BadRequest(t *testing.T) {
 		errors.New("bad request"),
 	).Times(1)
 
-	validatorClient := &beaconApiValidatorClient{jsonRestHandler: jsonRestHandler}
+	validatorClient := &beaconApiValidatorClient{handler: handler}
 	_, err = validatorClient.submitSignedAggregateSelectionProofElectra(ctx, &ethpb.SignedAggregateSubmitElectraRequest{
 		SignedAggregateAndProof: signedAggregateAndProofElectra,
 	})
@@ -163,8 +163,8 @@ func TestSubmitSignedAggregateSelectionProofElectra_FuluVersion(t *testing.T) {
 	ctx := t.Context()
 	expectedVersion := version.String(slots.ToForkVersion(signedAggregateAndProofElectra.Message.Aggregate.Data.Slot))
 	headers := map[string]string{"Eth-Consensus-Version": expectedVersion}
-	jsonRestHandler := mock.NewMockJsonRestHandler(ctrl)
-	jsonRestHandler.EXPECT().Post(
+	handler := mock.NewMockHandler(ctrl)
+	handler.EXPECT().Post(
 		gomock.Any(),
 		"/eth/v2/validator/aggregate_and_proofs",
 		headers,
@@ -177,7 +177,7 @@ func TestSubmitSignedAggregateSelectionProofElectra_FuluVersion(t *testing.T) {
 	attestationDataRoot, err := signedAggregateAndProofElectra.Message.Aggregate.Data.HashTreeRoot()
 	require.NoError(t, err)
 
-	validatorClient := &beaconApiValidatorClient{jsonRestHandler: jsonRestHandler}
+	validatorClient := &beaconApiValidatorClient{handler: handler}
 	resp, err := validatorClient.submitSignedAggregateSelectionProofElectra(ctx, &ethpb.SignedAggregateSubmitElectraRequest{
 		SignedAggregateAndProof: signedAggregateAndProofElectra,
 	})

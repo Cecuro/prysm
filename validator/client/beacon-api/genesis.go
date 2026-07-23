@@ -7,11 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/api/server/structs"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/network/httputil"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/api/rest"
+	"github.com/OffchainLabs/prysm/v7/api/server/structs"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/network/httputil"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 	"github.com/pkg/errors"
 )
 
@@ -20,9 +21,9 @@ type GenesisProvider interface {
 }
 
 type beaconApiGenesisProvider struct {
-	jsonRestHandler RestHandler
-	genesis         *structs.Genesis
-	once            sync.Once
+	handler rest.Handler
+	genesis *structs.Genesis
+	once    sync.Once
 }
 
 func (c *beaconApiValidatorClient) waitForChainStart(ctx context.Context) (*ethpb.ChainStartResponse, error) {
@@ -68,7 +69,7 @@ func (c *beaconApiGenesisProvider) Genesis(ctx context.Context) (*structs.Genesi
 	genesisJson := &structs.GetGenesisResponse{}
 	var doErr error
 	c.once.Do(func() {
-		if err := c.jsonRestHandler.Get(ctx, "/eth/v1/beacon/genesis", genesisJson); err != nil {
+		if err := c.handler.Get(ctx, "/eth/v1/beacon/genesis", genesisJson); err != nil {
 			doErr = err
 			return
 		}

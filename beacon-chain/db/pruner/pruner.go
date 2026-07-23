@@ -4,16 +4,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/db"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/db/iface"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/db"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/db/iface"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
-
-var log = logrus.WithField("prefix", "db-pruner")
 
 const (
 	// defaultPrunableBatchSize is the number of slots that can be pruned at once.
@@ -221,7 +219,7 @@ func (p *Service) pruneBatches(pruneUpto primitives.Slot) (int, error) {
 		case <-ctx.Done():
 			return numBatches, nil
 		default:
-			for i := 0; i < defaultNumBatchesToPrune; i++ {
+			for range defaultNumBatchesToPrune {
 				slotsDeleted, err := p.db.DeleteHistoricalDataBeforeSlot(ctx, pruneUpto, defaultPrunableBatchSize)
 				if err != nil {
 					return 0, errors.Wrapf(err, "could not delete upto slot %d", pruneUpto)

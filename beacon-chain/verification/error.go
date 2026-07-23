@@ -3,7 +3,7 @@ package verification
 import (
 	"errors"
 
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
 )
 
 // ErrInvalid is a general purpose verification failure that can be wrapped or joined to indicate
@@ -40,6 +40,9 @@ var (
 
 	// errSidecarParentNotSeen means RequireSidecarParentSeen failed.
 	errSidecarParentNotSeen = errors.New("parent root has not been seen")
+
+	// ErrSidecarParentUnknown means that the sidecar parent was not found in the forkchoice.
+	ErrSidecarParentUnknown = errors.New("parent not found in forkchoice")
 
 	// errSidecarParentInvalid means RequireSidecarParentValid failed.
 	errSidecarParentInvalid = errors.Join(ErrBlobInvalid, errors.New("parent block is not valid"))

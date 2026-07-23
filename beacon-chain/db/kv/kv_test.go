@@ -3,16 +3,30 @@ package kv
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/config/features"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
+	"github.com/OffchainLabs/prysm/v7/cmd/beacon-chain/flags"
+	"github.com/OffchainLabs/prysm/v7/config/features"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
+	"github.com/golang/snappy"
 	bolt "go.etcd.io/bbolt"
 )
+
+func requireBlocksEqual(t testing.TB, want, got interfaces.ReadOnlySignedBeaconBlock) {
+	wantPb, err := want.Proto()
+	require.NoError(t, err)
+
+	gotPb, err := got.Proto()
+	require.NoError(t, err)
+	require.DeepEqual(t, wantPb, gotPb)
+}
 
 // setupDB instantiates and returns a Store instance.
 func setupDB(t testing.TB) *Store {
@@ -25,6 +39,106 @@ func setupDB(t testing.TB) *Store {
 		}
 	})
 	return db
+}
+
+func TestStartStateDiff_ExponentMismatch(t *testing.T) {
+	resetCfg := features.InitWithReset(&features.Flags{EnableStateDiff: true})
+	defer resetCfg()
+	setDefaultStateDiffExponents()
+
+	store := setupDB(t)
+	require.NoError(t, store.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(stateDiffBucket)
+		if bucket == nil {
+			return bolt.ErrBucketNotFound
+		}
+		offsetBytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(offsetBytes, 0)
+		if err := bucket.Put(offsetKey, offsetBytes); err != nil {
+			return err
+		}
+		encoded, err := encodeStateDiffExponents([]int{20, 10})
+		if err != nil {
+			return err
+		}
+		return bucket.Put(exponentsKey, encoded)
+	}))
+
+	ctx := t.Context()
+	err := store.startStateDiff(ctx)
+	require.ErrorContains(t, "state-diff exponents changed", err)
+}
+
+func TestStartStateDiff_MissingOffsetSnapshot(t *testing.T) {
+	resetCfg := features.InitWithReset(&features.Flags{EnableStateDiff: true})
+	defer resetCfg()
+	setDefaultStateDiffExponents()
+
+	store := setupDB(t)
+	require.NoError(t, store.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(stateDiffBucket)
+		if bucket == nil {
+			return bolt.ErrBucketNotFound
+		}
+		offsetBytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(offsetBytes, 0)
+		if err := bucket.Put(offsetKey, offsetBytes); err != nil {
+			return err
+		}
+		encoded, err := encodeStateDiffExponents(flags.Get().StateDiffExponents)
+		if err != nil {
+			return err
+		}
+		return bucket.Put(exponentsKey, encoded)
+	}))
+
+	ctx := t.Context()
+	err := store.startStateDiff(ctx)
+	require.ErrorContains(t, "offset snapshot", err)
+}
+
+func TestStartStateDiff_ValidateOnStartup(t *testing.T) {
+	resetCfg := features.InitWithReset(&features.Flags{EnableStateDiff: true})
+	defer resetCfg()
+	setDefaultStateDiffExponents()
+
+	globalFlags := flags.GlobalFlags{
+		StateDiffExponents: flags.Get().StateDiffExponents,
+	}
+	flags.Init(&globalFlags)
+
+	st, _ := createState(t, 0, version.Phase0)
+	stateBytes, err := st.MarshalSSZ()
+	require.NoError(t, err)
+	enc, err := addKey(st.Version(), stateBytes)
+	require.NoError(t, err)
+	enc = snappy.Encode(nil, enc)
+
+	store := setupDB(t)
+	require.NoError(t, store.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(stateDiffBucket)
+		if bucket == nil {
+			return bolt.ErrBucketNotFound
+		}
+
+		offsetBytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(offsetBytes, 0)
+		if err := bucket.Put(offsetKey, offsetBytes); err != nil {
+			return err
+		}
+		encoded, err := encodeStateDiffExponents(flags.Get().StateDiffExponents)
+		if err != nil {
+			return err
+		}
+		if err := bucket.Put(exponentsKey, encoded); err != nil {
+			return err
+		}
+		key := makeKeyForStateDiffTree(0, 0)
+		return bucket.Put(key, enc)
+	}))
+
+	err = store.startStateDiff(t.Context())
+	require.NoError(t, err)
 }
 
 func Test_setupBlockStorageType(t *testing.T) {
@@ -48,7 +162,7 @@ func Test_setupBlockStorageType(t *testing.T) {
 		retrievedBlk, err := store.Block(ctx, root)
 		require.NoError(t, err)
 		require.Equal(t, false, retrievedBlk.IsBlinded())
-		require.DeepEqual(t, wrappedBlock, retrievedBlk)
+		requireBlocksEqual(t, wrappedBlock, retrievedBlk)
 	})
 	t.Run("fresh database with default settings should store blinded", func(t *testing.T) {
 		resetFn := features.InitWithReset(&features.Flags{
@@ -72,7 +186,7 @@ func Test_setupBlockStorageType(t *testing.T) {
 
 		wantedBlk, err := wrappedBlock.ToBlinded()
 		require.NoError(t, err)
-		require.DeepEqual(t, wantedBlk, retrievedBlk)
+		requireBlocksEqual(t, wantedBlk, retrievedBlk)
 	})
 	t.Run("existing database with blinded blocks but no key in metadata bucket should continue storing blinded blocks", func(t *testing.T) {
 		store := setupDB(t)
@@ -92,7 +206,7 @@ func Test_setupBlockStorageType(t *testing.T) {
 		retrievedBlk, err := store.Block(ctx, root)
 		require.NoError(t, err)
 		require.Equal(t, true, retrievedBlk.IsBlinded())
-		require.DeepEqual(t, wrappedBlock, retrievedBlk)
+		requireBlocksEqual(t, wrappedBlock, retrievedBlk)
 
 		// We then delete the key from the bucket.
 		require.NoError(t, store.db.Update(func(tx *bolt.Tx) error {
@@ -158,7 +272,7 @@ func Test_setupBlockStorageType(t *testing.T) {
 		retrievedBlk, err := store.Block(ctx, root)
 		require.NoError(t, err)
 		require.Equal(t, false, retrievedBlk.IsBlinded())
-		require.DeepEqual(t, wrappedBlock, retrievedBlk)
+		requireBlocksEqual(t, wrappedBlock, retrievedBlk)
 
 		// Not a fresh database, has full blocks already and should continue being that way.
 		err = store.setupBlockStorageType(ctx)
@@ -204,7 +318,7 @@ func Test_setupBlockStorageType(t *testing.T) {
 		require.Equal(t, true, retrievedBlk.IsBlinded())
 		wantedBlk, err := wrappedBlock.ToBlinded()
 		require.NoError(t, err)
-		require.DeepEqual(t, wantedBlk, retrievedBlk)
+		requireBlocksEqual(t, wantedBlk, retrievedBlk)
 
 		// Trying to enable full blocks with a database that is already storing blinded blocks should error.
 		resetFn := features.InitWithReset(&features.Flags{

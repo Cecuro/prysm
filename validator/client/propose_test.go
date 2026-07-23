@@ -8,26 +8,25 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/signing"
-	lruwrpr "github.com/OffchainLabs/prysm/v6/cache/lru"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/config/proposer"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	blocktest "github.com/OffchainLabs/prysm/v6/consensus-types/blocks/testing"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/interfaces"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/crypto/bls"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	validatorpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1/validator-client"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
-	validatormock "github.com/OffchainLabs/prysm/v6/testing/validator-mock"
-	testing2 "github.com/OffchainLabs/prysm/v6/validator/db/testing"
-	"github.com/OffchainLabs/prysm/v6/validator/graffiti"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/signing"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/config/proposer"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	blocktest "github.com/OffchainLabs/prysm/v7/consensus-types/blocks/testing"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/crypto/bls"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	validatorpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1/validator-client"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
+	validatormock "github.com/OffchainLabs/prysm/v7/testing/validator-mock"
+	testing2 "github.com/OffchainLabs/prysm/v7/validator/db/testing"
+	"github.com/OffchainLabs/prysm/v7/validator/graffiti"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	logTest "github.com/sirupsen/logrus/hooks/test"
 	"go.uber.org/mock/gomock"
@@ -90,17 +89,20 @@ func setupWithKey(t *testing.T, validatorKey bls.SecretKey, isSlashingProtection
 			return mockSignature{}, nil
 		},
 	}
-	aggregatedSlotCommitteeIDCache := lruwrpr.New(int(params.BeaconConfig().MaxCommitteesPerSlot))
-
 	validator := &validator{
-		db:                             valDB,
-		km:                             newMockKeymanager(t, keypair{pub: pubKey, pri: validatorKey}),
-		validatorClient:                m.validatorClient,
-		graffiti:                       []byte{},
-		submittedAtts:                  make(map[submittedAttKey]*submittedAtt),
-		submittedAggregates:            make(map[submittedAttKey]*submittedAtt),
-		aggregatedSlotCommitteeIDCache: aggregatedSlotCommitteeIDCache,
+		db:                  valDB,
+		km:                  newMockKeymanager(t, keypair{pub: pubKey, pri: validatorKey}),
+		validatorClient:     m.validatorClient,
+		graffiti:            []byte{},
+		duties:              &dutyStore{},
+		payloadAvailability: newPayloadAvailability(),
+		submittedAtts:       make(map[submittedAttKey]*submittedAtt),
+		submittedAggregates: make(map[submittedAttKey]*submittedAtt),
+		pubkeyToStatus: map[[fieldparams.BLSPubkeyLength]byte]*validatorStatus{
+			pubKey: {publicKey: validatorKey.PublicKey().Marshal(), index: 0},
+		},
 	}
+	validator.aggSelector = testLocalSelector(t, validator)
 
 	return validator, m, validatorKey, ctrl.Finish
 }

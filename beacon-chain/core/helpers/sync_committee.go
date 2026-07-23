@@ -5,16 +5,15 @@ package helpers
 import (
 	"bytes"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/cache"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/time"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/crypto/hash"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/cache"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/time"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/crypto/hash"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -122,7 +121,7 @@ func IsNextPeriodSyncCommittee(
 // CurrentPeriodSyncSubcommitteeIndices returns the subcommittee indices of the
 // current period sync committee for input validator.
 func CurrentPeriodSyncSubcommitteeIndices(
-	st state.BeaconState, valIdx primitives.ValidatorIndex,
+	st state.ReadOnlyBeaconState, valIdx primitives.ValidatorIndex,
 ) ([]primitives.CommitteeIndex, error) {
 	root, err := SyncPeriodBoundaryRoot(st)
 	if err != nil {

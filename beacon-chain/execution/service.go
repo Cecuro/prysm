@@ -13,27 +13,27 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/cache"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/cache/depositsnapshot"
-	statefeed "github.com/OffchainLabs/prysm/v6/beacon-chain/core/feed/state"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/helpers"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/transition"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/db"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/execution/types"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	native "github.com/OffchainLabs/prysm/v6/beacon-chain/state/state-native"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state/stategen"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/verification"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/container/trie"
-	contracts "github.com/OffchainLabs/prysm/v6/contracts/deposit"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/monitoring/clientstats"
-	"github.com/OffchainLabs/prysm/v6/network"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	prysmTime "github.com/OffchainLabs/prysm/v6/time"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/cache"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/cache/depositsnapshot"
+	statefeed "github.com/OffchainLabs/prysm/v7/beacon-chain/core/feed/state"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/transition"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/db"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/execution/types"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	native "github.com/OffchainLabs/prysm/v7/beacon-chain/state/state-native"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state/stategen"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/verification"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/container/trie"
+	contracts "github.com/OffchainLabs/prysm/v7/contracts/deposit"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/monitoring/clientstats"
+	"github.com/OffchainLabs/prysm/v7/network"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	prysmTime "github.com/OffchainLabs/prysm/v7/time"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -103,7 +103,7 @@ type Chain interface {
 type RPCClient interface {
 	Close()
 	BatchCall(b []gethRPC.BatchElem) error
-	CallContext(ctx context.Context, result interface{}, method string, args ...interface{}) error
+	CallContext(ctx context.Context, result any, method string, args ...any) error
 }
 
 type RPCClientEmpty struct {
@@ -114,7 +114,7 @@ func (RPCClientEmpty) BatchCall([]gethRPC.BatchElem) error {
 	return errors.New("rpc client is not initialized")
 }
 
-func (RPCClientEmpty) CallContext(context.Context, interface{}, string, ...interface{}) error {
+func (RPCClientEmpty) CallContext(context.Context, any, string, ...any) error {
 	return errors.New("rpc client is not initialized")
 }
 
@@ -140,6 +140,7 @@ type config struct {
 // Validator Registration Contract on the eth1 chain to kick off the beacon
 // chain's validator registration process.
 type Service struct {
+	partialColumnsSupported bool
 	connectedETH1           bool
 	isRunning               bool
 	depositRequestsStarted  bool
@@ -162,6 +163,7 @@ type Service struct {
 	verifierWaiter          *verification.InitializerWaiter
 	blobVerifier            verification.NewBlobVerifier
 	capabilityCache         *capabilityCache
+	graffitiInfo            *GraffitiInfo
 }
 
 // NewService sets up a new instance with an ethclient when given a web3 endpoint as a string in the config.
@@ -318,6 +320,28 @@ func (s *Service) updateConnectedETH1(state bool) {
 	s.updateBeaconNodeStats()
 }
 
+// GraffitiInfo returns the GraffitiInfo struct for graffiti generation.
+func (s *Service) GraffitiInfo() *GraffitiInfo {
+	return s.graffitiInfo
+}
+
+// updateGraffitiInfo fetches EL client version and updates the graffiti info.
+func (s *Service) updateGraffitiInfo() {
+	if s.graffitiInfo == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, time.Second)
+	defer cancel()
+	versions, err := s.GetClientVersionV1(ctx)
+	if err != nil {
+		log.WithError(err).Debug("Could not get execution client version for graffiti")
+		return
+	}
+	if len(versions) >= 1 {
+		s.graffitiInfo.UpdateFromEngine(versions[0].Code, versions[0].Commit)
+	}
+}
+
 // refers to the latest eth1 block which follows the condition: eth1_timestamp +
 // SECONDS_PER_ETH1_BLOCK * ETH1_FOLLOW_DISTANCE <= current_unix_time
 func (s *Service) followedBlockHeight(ctx context.Context) (uint64, error) {
@@ -426,7 +450,7 @@ func (s *Service) batchRequestHeaders(startBlock, endBlock uint64) ([]*types.Hea
 		header := &types.HeaderInfo{}
 		elems = append(elems, gethRPC.BatchElem{
 			Method: "eth_getBlockByNumber",
-			Args:   []interface{}{hexutil.EncodeBig(new(big.Int).SetUint64(i)), false},
+			Args:   []any{hexutil.EncodeBig(new(big.Int).SetUint64(i)), false},
 			Result: header,
 			Error:  error(nil),
 		})
@@ -598,6 +622,12 @@ func (s *Service) run(done <-chan struct{}) {
 	chainstartTicker := time.NewTicker(logPeriod)
 	defer chainstartTicker.Stop()
 
+	// Update graffiti info 4 times per epoch (~96 seconds with 12s slots and 32 slots/epoch)
+	graffitiTicker := time.NewTicker(96 * time.Second)
+	defer graffitiTicker.Stop()
+	// Initial update
+	s.updateGraffitiInfo()
+
 	for {
 		select {
 		case <-done:
@@ -622,6 +652,8 @@ func (s *Service) run(done <-chan struct{}) {
 				continue
 			}
 			s.logTillChainStart(context.Background())
+		case <-graffitiTicker.C:
+			s.updateGraffitiInfo()
 		}
 	}
 }
@@ -863,19 +895,6 @@ func (s *Service) validPowchainData(ctx context.Context) (*ethpb.ETH1ChainData, 
 	return eth1Data, nil
 }
 
-func dedupEndpoints(endpoints []string) []string {
-	selectionMap := make(map[string]bool)
-	newEndpoints := make([]string, 0, len(endpoints))
-	for _, point := range endpoints {
-		if selectionMap[point] {
-			continue
-		}
-		newEndpoints = append(newEndpoints, point)
-		selectionMap[point] = true
-	}
-	return newEndpoints
-}
-
 func (s *Service) migrateOldDepositTree(eth1DataInDB *ethpb.ETH1ChainData) error {
 	oldDepositTrie, err := trie.CreateTrieFromProto(eth1DataInDB.Trie)
 	if err != nil {
@@ -922,7 +941,7 @@ func newBlobVerifierFromInitializer(ini *verification.Initializer) verification.
 }
 
 type capabilityCache struct {
-	capabilities     map[string]interface{}
+	capabilities     map[string]any
 	capabilitiesLock sync.RWMutex
 }
 
@@ -931,7 +950,7 @@ func (c *capabilityCache) save(cs []string) {
 	defer c.capabilitiesLock.Unlock()
 
 	if c.capabilities == nil {
-		c.capabilities = make(map[string]interface{})
+		c.capabilities = make(map[string]any)
 	}
 
 	for _, capability := range cs {

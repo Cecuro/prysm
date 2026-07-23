@@ -3,9 +3,9 @@ package util
 import (
 	"testing"
 
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
 )
 
 func TestNewBeaconState(t *testing.T) {
@@ -64,6 +64,26 @@ func TestNewBeaconStateElectra(t *testing.T) {
 	b, err := st.MarshalSSZ()
 	require.NoError(t, err)
 	got := &ethpb.BeaconStateElectra{}
+	require.NoError(t, got.UnmarshalSSZ(b))
+	assert.DeepEqual(t, st.ToProtoUnsafe(), got)
+}
+
+func TestNewBeaconStateFulu(t *testing.T) {
+	st, err := NewBeaconStateFulu()
+	require.NoError(t, err)
+	b, err := st.MarshalSSZ()
+	require.NoError(t, err)
+	got := &ethpb.BeaconStateFulu{}
+	require.NoError(t, got.UnmarshalSSZ(b))
+	assert.DeepEqual(t, st.ToProtoUnsafe(), got)
+}
+
+func TestNewBeaconStateGloas(t *testing.T) {
+	st, err := NewBeaconStateGloas()
+	require.NoError(t, err)
+	b, err := st.MarshalSSZ()
+	require.NoError(t, err)
+	got := &ethpb.BeaconStateGloas{}
 	require.NoError(t, got.UnmarshalSSZ(b))
 	assert.DeepEqual(t, st.ToProtoUnsafe(), got)
 }

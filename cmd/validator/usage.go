@@ -5,10 +5,10 @@ import (
 	"io"
 	"sort"
 
-	"github.com/OffchainLabs/prysm/v6/cmd"
-	"github.com/OffchainLabs/prysm/v6/cmd/validator/flags"
-	"github.com/OffchainLabs/prysm/v6/config/features"
-	"github.com/OffchainLabs/prysm/v6/runtime/debug"
+	"github.com/OffchainLabs/prysm/v7/cmd"
+	"github.com/OffchainLabs/prysm/v7/cmd/validator/flags"
+	"github.com/OffchainLabs/prysm/v7/config/features"
+	"github.com/OffchainLabs/prysm/v7/runtime/debug"
 	"github.com/urfave/cli/v2"
 )
 
@@ -60,7 +60,6 @@ var appHelpFlagGroups = []flagGroup{
 			flags.WalletPasswordFileFlag,
 			cmd.ClearDB,
 			cmd.ForceClearDB,
-			cmd.EnableBackupWebhookFlag,
 			cmd.EnableTracingFlag,
 			cmd.TracingProcessNameFlag,
 			cmd.TracingEndpointFlag,
@@ -68,6 +67,7 @@ var appHelpFlagGroups = []flagGroup{
 			cmd.MonitoringHostFlag,
 			flags.MonitoringPortFlag,
 			cmd.DisableMonitoringFlag,
+			cmd.DisableLogColor,
 			cmd.LogFormat,
 			cmd.LogFileName,
 			cmd.ConfigFileFlag,
@@ -75,6 +75,8 @@ var appHelpFlagGroups = []flagGroup{
 			cmd.GrpcMaxCallRecvMsgSizeFlag,
 			cmd.AcceptTosFlag,
 			cmd.ApiTimeoutFlag,
+			flags.DisableEphemeralLogFile,
+			cmd.LogVModuleFlag,
 		},
 	},
 	{
@@ -115,6 +117,7 @@ var appHelpFlagGroups = []flagGroup{
 			flags.EnableBuilderFlag,
 			flags.BuilderGasLimitFlag,
 			flags.ValidatorsRegistrationBatchSizeFlag,
+			flags.EnableStatelessFlag,
 			flags.GraffitiFlag,
 			flags.GraffitiFileFlag,
 		},
@@ -125,13 +128,6 @@ var appHelpFlagGroups = []flagGroup{
 			flags.Web3SignerURLFlag,
 			flags.Web3SignerPublicValidatorKeysFlag,
 			flags.Web3SignerKeyFileFlag,
-		},
-	},
-	{
-		Name: "slasher",
-		Flags: []cli.Flag{
-			flags.SlasherRPCProviderFlag,
-			flags.SlasherCertFlag,
 		},
 	},
 	{
@@ -150,13 +146,6 @@ var appHelpFlagGroups = []flagGroup{
 		Flags: features.ActiveFlags(features.ValidatorFlags),
 	},
 	{
-		Name: "interop",
-		Flags: []cli.Flag{
-			flags.InteropNumValidators,
-			flags.InteropStartIndex,
-		},
-	},
-	{
 		Name:  "deprecated",
 		Flags: []cli.Flag{},
 	},
@@ -166,12 +155,12 @@ func init() {
 	cli.AppHelpTemplate = appHelpTemplate
 
 	type helpData struct {
-		App        interface{}
+		App        any
 		FlagGroups []flagGroup
 	}
 
 	originalHelpPrinter := cli.HelpPrinter
-	cli.HelpPrinter = func(w io.Writer, tmpl string, data interface{}) {
+	cli.HelpPrinter = func(w io.Writer, tmpl string, data any) {
 		if tmpl == appHelpTemplate {
 			for _, group := range appHelpFlagGroups {
 				sort.Sort(cli.FlagsByName(group.Flags))

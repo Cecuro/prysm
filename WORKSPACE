@@ -205,10 +205,39 @@ prysm_image_deps()
 
 load("@io_bazel_rules_go//go:deps.bzl", "go_register_toolchains", "go_rules_dependencies")
 
+# Override golang.org/x/tools to use v0.44.0 instead of v0.30.0
+# This is necessary as this dependency is required by rules_go and they do not accept dependency
+# update PRs. Instead, they ask downstream projects to override the dependency. To generate the
+# patches or update this dependency again, check out the rules_go repo then run the releaser tool.
+# bazel run //go/tools/releaser -- upgrade-dep -mirror=false org_golang_x_tools
+# Copy the patches and http_archive updates from rules_go here.
+#
+# How to generate the patch:
+# 1. Check out the rules_go repo.
+# 2. Build gazelle: bazel build @bazel_gazelle//cmd/gazelle
+# 3. Set the PATH to include the built gazelle binary:
+#    PATH="$(dirname "$(bazel info bazel-bin)/external/bazel_gazelle/cmd/gazelle/gazelle_/gazelle"):$PATH"
+# 4. bazel run //go/tools/releaser -- upgrade-dep -mirror=false org_golang_x_tools@v0.44.0
+# 5. Copy-paste org_golang_x_tools-gazelle.patch from rules_go into third_party/org_golang_x_tools-gazelle.patch
+http_archive(
+    name = "org_golang_x_tools",
+    patch_args = ["-p1"],
+    patch_cmds = ["rm -rf gopls"],
+    patch_cmds_win = ["Remove-Item -Recurse -Force gopls"],
+    patches = [
+        "//third_party:org_golang_x_tools-gazelle.patch",
+    ],
+    sha256 = "5bbb5095f55570d9a0cb19c28143d7eadd7c65d2ab2a70dc89f37ee51660969c",
+    strip_prefix = "tools-0.44.0",
+    urls = [
+        "https://github.com/golang/tools/archive/refs/tags/v0.44.0.zip",
+    ],
+)
+
 go_rules_dependencies()
 
 go_register_toolchains(
-    go_version = "1.25.1",
+    go_version = "1.26.4",
     nogo = "@//:nogo",
 )
 
@@ -253,16 +282,16 @@ filegroup(
     url = "https://github.com/ethereum/EIPs/archive/5480440fe51742ed23342b68cf106cefd427e39d.tar.gz",
 )
 
-consensus_spec_version = "v1.6.0"
+consensus_spec_version = "v1.7.0-alpha.11"
 
 load("@prysm//tools:download_spectests.bzl", "consensus_spec_tests")
 
 consensus_spec_tests(
     name = "consensus_spec_tests",
     flavors = {
-        "general": "sha256-54hTaUNF9nLg+hRr3oHoq0yjZpW3MNiiUUuCQu6Rajk=",
-        "minimal": "sha256-1JHIGg3gVMjvcGYRHR5cwdDgOvX47oR/MWp6gyAeZfA=",
-        "mainnet": "sha256-292h3W2Ffts0YExgDTyxYe9Os7R0bZIXuAaMO8P6kl4=",
+        "general": "sha256-szDpBVO2Ebi8/bwbiWFpW6H4c5gxnpU3hAUS31AF02E=",
+        "minimal": "sha256-irUv63gOA03eGIFD23Ca3PsDq87ovrA/HVAvtSG6/0o=",
+        "mainnet": "sha256-lWzAX5uy50Xs0Etg+yu5FnnIDt6C6BtIm11HqdZetms=",
     },
     version = consensus_spec_version,
 )
@@ -278,7 +307,7 @@ filegroup(
     visibility = ["//visibility:public"],
 )
     """,
-    integrity = "sha256-VzBgrEokvYSMIIXVnSA5XS9I3m9oxpvToQGxC1N5lzw=",
+    integrity = "sha256-6XWl6m5tkPIlx5eh3DxrHAShRzWh3gz4LlLjIM78wJo=",
     strip_prefix = "consensus-specs-" + consensus_spec_version[1:],
     url = "https://github.com/ethereum/consensus-specs/archive/refs/tags/%s.tar.gz" % consensus_spec_version,
 )
@@ -402,10 +431,6 @@ bls_dependencies()
 load("@prysm//testing/endtoend:deps.bzl", "e2e_deps")
 
 e2e_deps()
-
-load("@com_github_atlassian_bazel_tools//gometalinter:deps.bzl", "gometalinter_dependencies")
-
-gometalinter_dependencies()
 
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
 

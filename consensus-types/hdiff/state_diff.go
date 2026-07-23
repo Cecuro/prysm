@@ -7,21 +7,22 @@ import (
 	"slices"
 
 	"github.com/OffchainLabs/go-bitfield"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/altair"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/capella"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/deneb"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/electra"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/execution"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/fulu"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/helpers"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/interfaces"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	enginev1 "github.com/OffchainLabs/prysm/v6/proto/engine/v1"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/altair"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/capella"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/deneb"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/electra"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/execution"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/fulu"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/gloas"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/helpers"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	enginev1 "github.com/OffchainLabs/prysm/v7/proto/engine/v1"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	ssz "github.com/prysmaticlabs/fastssz"
@@ -117,6 +118,17 @@ type stateDiff struct {
 	pendingConsolidationsDiffs     []*ethpb.PendingConsolidation     // override.
 	// Fulu
 	proposerLookahead []uint64 // override
+	// Gloas
+	latestExecutionPayloadBid      *ethpb.ExecutionPayloadBid        // override.
+	builderDiffs                   []builderDiff                     // sparse diff: only changed/replaced builders.
+	nextWithdrawalBuilderIndex     uint64                            // override.
+	executionPayloadAvailability   []byte                            // override.
+	builderPendingPayments         []*ethpb.BuilderPendingPayment    // override.
+	builderPendingWithdrawalsIndex uint64                            // prefix-drop index.
+	builderPendingWithdrawalsDiff  []*ethpb.BuilderPendingWithdrawal // prefix-drop + append.
+	latestBlockHash                [fieldparams.RootLength]byte      // override.
+	payloadExpectedWithdrawals     []*enginev1.Withdrawal            // override.
+	ptcWindow                      []*ethpb.PTCs                     // override.
 }
 
 type hdiff struct {
@@ -752,7 +764,7 @@ func (ret *stateDiff) readProposerLookahead(data *[]byte) error {
 	// Read the proposer lookahead (2 * SlotsPerEpoch uint64 values)
 	numProposers := 2 * fieldparams.SlotsPerEpoch
 	ret.proposerLookahead = make([]uint64, numProposers)
-	for i := 0; i < numProposers; i++ {
+	for i := range numProposers {
 		ret.proposerLookahead[i] = binary.LittleEndian.Uint64((*data)[i*8 : (i+1)*8])
 	}
 	*data = (*data)[proposerLookaheadLength:]
@@ -838,8 +850,10 @@ func newStateDiff(input []byte) (*stateDiff, error) {
 	if err := ret.readNextSyncCommittee(&data); err != nil {
 		return nil, err
 	}
-	if err := ret.readExecutionPayloadHeader(&data); err != nil {
-		return nil, err
+	if ret.targetVersion < version.Gloas {
+		if err := ret.readExecutionPayloadHeader(&data); err != nil {
+			return nil, err
+		}
 	}
 	if err := ret.readWithdrawalIndices(&data); err != nil {
 		return nil, err
@@ -862,6 +876,11 @@ func newStateDiff(input []byte) (*stateDiff, error) {
 	if ret.targetVersion >= version.Fulu {
 		// Proposer lookahead has fixed size and it is not added for forks previous to Fulu.
 		if err := ret.readProposerLookahead(&data); err != nil {
+			return nil, err
+		}
+	}
+	if ret.targetVersion >= version.Gloas {
+		if err := ret.readGloasFields(&data); err != nil {
 			return nil, err
 		}
 	}
@@ -1108,17 +1127,19 @@ func (s *stateDiff) serialize() []byte {
 		ret = append(ret, s.nextSyncCommittee.AggregatePubkey...)
 	}
 
-	if s.executionPayloadHeader == nil {
-		ret = append(ret, nilMarker)
-	} else {
-		ret = append(ret, notNilMarker)
-		ret = binary.LittleEndian.AppendUint64(ret, uint64(s.executionPayloadHeader.SizeSSZ()))
-		var err error
-		ret, err = s.executionPayloadHeader.MarshalSSZTo(ret)
-		if err != nil {
-			// this is impossible to happen.
-			logrus.WithError(err).Error("Failed to marshal executionPayloadHeader")
-			return nil
+	if s.targetVersion < version.Gloas {
+		if s.executionPayloadHeader == nil {
+			ret = append(ret, nilMarker)
+		} else {
+			ret = append(ret, notNilMarker)
+			ret = binary.LittleEndian.AppendUint64(ret, uint64(s.executionPayloadHeader.SizeSSZ()))
+			var err error
+			ret, err = s.executionPayloadHeader.MarshalSSZTo(ret)
+			if err != nil {
+				// this is impossible to happen.
+				logrus.WithError(err).Error("Failed to marshal executionPayloadHeader")
+				return nil
+			}
 		}
 	}
 
@@ -1165,6 +1186,9 @@ func (s *stateDiff) serialize() []byte {
 		for _, proposer := range s.proposerLookahead {
 			ret = binary.LittleEndian.AppendUint64(ret, proposer)
 		}
+	}
+	if s.targetVersion >= version.Gloas {
+		ret = serializeGloasFields(ret, s)
 	}
 	return ret
 }
@@ -1391,9 +1415,11 @@ func diffToState(source, target state.ReadOnlyBeaconState) (*stateDiff, error) {
 	if target.Version() < version.Bellatrix {
 		return ret, nil
 	}
-	ret.executionPayloadHeader, err = target.LatestExecutionPayloadHeader()
-	if err != nil {
-		return nil, err
+	if target.Version() < version.Gloas {
+		ret.executionPayloadHeader, err = target.LatestExecutionPayloadHeader()
+		if err != nil {
+			return nil, err
+		}
 	}
 	if target.Version() < version.Capella {
 		return ret, nil
@@ -1429,6 +1455,14 @@ func diffToState(source, target state.ReadOnlyBeaconState) (*stateDiff, error) {
 	ret.proposerLookahead = make([]uint64, len(proposerLookahead))
 	for i, idx := range proposerLookahead {
 		ret.proposerLookahead[i] = uint64(idx)
+	}
+
+	if target.Version() < version.Gloas {
+		return ret, nil
+	}
+
+	if err := diffGloasFields(ret, source, target); err != nil {
+		return nil, err
 	}
 
 	return ret, nil
@@ -1740,9 +1774,6 @@ func diffPendingConsolidations(diff *stateDiff, source, target state.ReadOnlyBea
 // applyValidatorDiff applies the validator diff to the source state in place.
 func applyValidatorDiff(source state.BeaconState, diff []validatorDiff) (state.BeaconState, error) {
 	sVals := source.Validators()
-	if len(sVals) < len(diff) {
-		return nil, errors.Errorf("target validators length %d is less than source %d", len(diff), len(sVals))
-	}
 	for _, d := range diff {
 		if d.index > uint32(len(sVals)) {
 			return nil, errors.Errorf("validator index %d is greater than length %d", d.index, len(sVals))
@@ -1793,6 +1824,14 @@ func applyBalancesDiff(source state.BeaconState, diff []int64) (state.BeaconStat
 // applyStateDiff applies the given diff to the source state in place.
 func applyStateDiff(ctx context.Context, source state.BeaconState, diff *stateDiff) (state.BeaconState, error) {
 	var err error
+	// updateToVersion runs Gloas onboarding which drops builder deposits, so capture the pre-upgrade list the diff indexes.
+	var prevPendingDeposits []*ethpb.PendingDeposit
+	if source.Version() >= version.Electra {
+		prevPendingDeposits, err = source.PendingDeposits()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get pending deposits")
+		}
+	}
 	if source, err = updateToVersion(ctx, source, diff.targetVersion); err != nil {
 		return nil, errors.Wrap(err, "failed to update state to target version")
 	}
@@ -1887,7 +1926,7 @@ func applyStateDiff(ctx context.Context, source state.BeaconState, diff *stateDi
 	if diff.targetVersion < version.Bellatrix {
 		return source, nil
 	}
-	if diff.executionPayloadHeader != nil {
+	if diff.targetVersion < version.Gloas && diff.executionPayloadHeader != nil {
 		if err := source.SetLatestExecutionPayloadHeader(diff.executionPayloadHeader); err != nil {
 			return nil, errors.Wrap(err, "failed to set latest execution payload header")
 		}
@@ -1925,7 +1964,7 @@ func applyStateDiff(ctx context.Context, source state.BeaconState, diff *stateDi
 	if err := source.SetEarliestConsolidationEpoch(diff.earliestConsolidationEpoch); err != nil {
 		return nil, errors.Wrap(err, "failed to set earliest consolidation epoch")
 	}
-	if err := applyPendingDepositsDiff(source, diff); err != nil {
+	if err := applyPendingDepositsDiff(source, diff, prevPendingDeposits); err != nil {
 		return nil, errors.Wrap(err, "failed to apply pending deposits diff")
 	}
 	if err := applyPendingPartialWithdrawalsDiff(source, diff); err != nil {
@@ -1940,16 +1979,21 @@ func applyStateDiff(ctx context.Context, source state.BeaconState, diff *stateDi
 	if err := applyProposerLookaheadDiff(source, diff); err != nil {
 		return nil, errors.Wrap(err, "failed to apply proposer lookahead diff")
 	}
+	if diff.targetVersion < version.Gloas {
+		return source, nil
+	}
+	if err := applyGloasFields(source, diff); err != nil {
+		return nil, errors.Wrap(err, "failed to apply Gloas fields")
+	}
 	return source, nil
 }
 
-// applyPendingDepositsDiff applies the pending deposits diff to the source state in place.
-func applyPendingDepositsDiff(source state.BeaconState, diff *stateDiff) error {
-	sPendingDeposits, err := source.PendingDeposits()
-	if err != nil {
-		return errors.Wrap(err, "failed to get pending deposits")
+// prevPendingDeposits is the anchor's pre-upgrade list the diff indexes, not source's post-upgrade list.
+func applyPendingDepositsDiff(source state.BeaconState, diff *stateDiff, prevPendingDeposits []*ethpb.PendingDeposit) error {
+	if int(diff.pendingDepositIndex) > len(prevPendingDeposits) {
+		return errors.Errorf("pending deposit index %d exceeds source length %d", diff.pendingDepositIndex, len(prevPendingDeposits))
 	}
-	sPendingDeposits = sPendingDeposits[int(diff.pendingDepositIndex):]
+	sPendingDeposits := prevPendingDeposits[int(diff.pendingDepositIndex):]
 	for _, t := range diff.pendingDepositDiff {
 		sPendingDeposits = append(sPendingDeposits, &ethpb.PendingDeposit{
 			PublicKey:             slices.Clone(t.PublicKey),
@@ -2135,6 +2179,8 @@ func updateToVersion(ctx context.Context, source state.BeaconState, target int) 
 		ret, err = electra.ConvertToElectra(source)
 	case version.Electra:
 		ret, err = fulu.ConvertToFulu(source)
+	case version.Fulu:
+		ret, err = gloas.UpgradeToGloas(source)
 	default:
 		return nil, errors.Errorf("unsupported version %s", version.String(source.Version()))
 	}

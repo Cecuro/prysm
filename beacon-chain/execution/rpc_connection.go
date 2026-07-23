@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	contracts "github.com/OffchainLabs/prysm/v6/contracts/deposit"
-	"github.com/OffchainLabs/prysm/v6/io/logs"
-	"github.com/OffchainLabs/prysm/v6/network"
-	"github.com/OffchainLabs/prysm/v6/network/authorization"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	contracts "github.com/OffchainLabs/prysm/v7/contracts/deposit"
+	"github.com/OffchainLabs/prysm/v7/io/logs"
+	"github.com/OffchainLabs/prysm/v7/network"
+	"github.com/OffchainLabs/prysm/v7/network/authorization"
 	"github.com/ethereum/go-ethereum/ethclient"
 	gethRPC "github.com/ethereum/go-ethereum/rpc"
 	"github.com/pkg/errors"
@@ -84,6 +84,13 @@ func (s *Service) pollConnectionStatus(ctx context.Context) {
 				errorLogger(err, "Could not exchange capabilities with execution client")
 			}
 			s.capabilityCache.save(c)
+			if !s.capabilityCache.has(GetBlobsV3) && s.partialColumnsSupported {
+				log.Warn("Execution client does not support blobs v3, but partial data columns are enabled")
+			}
+
+			if s.capabilityCache.has(HasBlobs) && s.partialColumnsSupported {
+				log.WithField("method", HasBlobs).Info("Execution client supports blob availability checks, missing blobs will be requested via partial columns")
+			}
 
 			return
 		case <-s.ctx.Done():

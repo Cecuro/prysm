@@ -3,15 +3,15 @@ package blockchain
 import (
 	"context"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/altair"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/epoch/precompute"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/interfaces"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/altair"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/epoch/precompute"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -170,6 +170,10 @@ var (
 		Name: "txs_per_slot_count",
 		Help: "Count the number of txs per slot",
 	})
+	consolidationRequestCount = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "consolidation_request_count",
+		Help: "Count the number of consolidation requests",
+	})
 	onBlockProcessingTime = promauto.NewSummary(prometheus.SummaryOpts{
 		Name: "on_block_processing_milliseconds",
 		Help: "Total time in milliseconds to complete a call to postBlockProcess()",
@@ -221,6 +225,42 @@ var (
 			Buckets: []float64{1, 2, 4, 8, 16, 32},
 		},
 	)
+	commitmentCount = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "commitment_count_max_21",
+			Help:    "The number of blob KZG commitments per block.",
+			Buckets: []float64{1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21},
+		},
+	)
+	maxBlobsPerBlock = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "max_blobs_per_block",
+			Help: "The maximum number of blobs allowed in a block.",
+		},
+	)
+	beaconExecutionPayloadEnvelopeValidTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "beacon_execution_payload_envelope_valid_total",
+		Help: "Count the number of execution payload envelopes that were processed successfully.",
+	})
+	beaconExecutionPayloadEnvelopeInvalidTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "beacon_execution_payload_envelope_invalid_total",
+		Help: "Count the number of execution payload envelopes that failed processing.",
+	})
+	beaconExecutionPayloadEnvelopeProcessingDurationSeconds = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "beacon_execution_payload_envelope_processing_duration_seconds",
+			Help:    "Captures end-to-end processing time for execution payload envelopes.",
+			Buckets: prometheus.DefBuckets,
+		},
+	)
+	beaconLatePayloadTaskTriggeredTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "beacon_late_payload_task_triggered_total",
+		Help: "Count the number of times late payload tasks fired.",
+	})
+	goroutineCountGauge = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "beacon_goroutine_count",
+		Help: "Goroutine count sampled once per slot.",
+	}, []string{"kind"})
 )
 
 // reportSlotMetrics reports slot related metrics.

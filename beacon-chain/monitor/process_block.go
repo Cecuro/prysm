@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/blocks"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/interfaces"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/blocks"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/sirupsen/logrus"
 )
 
@@ -64,7 +64,7 @@ func (s *Service) processBlock(ctx context.Context, b interfaces.ReadOnlySignedB
 }
 
 // processProposedBlock logs when the beacon node observes a beacon block from a tracked validator.
-func (s *Service) processProposedBlock(state state.BeaconState, root [32]byte, blk interfaces.ReadOnlyBeaconBlock) {
+func (s *Service) processProposedBlock(state state.ReadOnlyBeaconState, root [32]byte, blk interfaces.ReadOnlyBeaconBlock) {
 	s.Lock()
 	defer s.Unlock()
 	if s.trackedIndex(blk.ProposerIndex()) {

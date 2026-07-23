@@ -3,15 +3,15 @@ package verification
 import (
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/signing"
-	forkchoicetypes "github.com/OffchainLabs/prysm/v6/beacon-chain/forkchoice/types"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/crypto/bls"
-	eth "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/runtime/interop"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/signing"
+
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/crypto/bls"
+	eth "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/interop"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
 )
 
 func testSignedBlockBlobKeys(t *testing.T, valRoot []byte, slot primitives.Slot, nblobs int) (blocks.ROBlock, []blocks.ROBlob, bls.SecretKey, bls.PublicKey) {
@@ -107,25 +107,3 @@ func (m *mockValidatorAtIndexer) ValidatorAtIndex(idx primitives.ValidatorIndex)
 }
 
 var _ validatorAtIndexer = &mockValidatorAtIndexer{}
-
-func TestProposerCache(t *testing.T) {
-	ctx := t.Context()
-	// 3 validators because that was the first number that produced a non-zero proposer index by default
-	st, _ := util.DeterministicGenesisStateDeneb(t, 3)
-
-	pc := newPropCache()
-	_, cached := pc.Proposer(&forkchoicetypes.Checkpoint{}, 1)
-	// should not be cached yet
-	require.Equal(t, false, cached)
-
-	// If this test breaks due to changes in the deterministic state gen, just replace '2' with whatever the right index is.
-	expectedIdx := 2
-	idx, err := pc.ComputeProposer(ctx, [32]byte{}, 1, st)
-	require.NoError(t, err)
-	require.Equal(t, primitives.ValidatorIndex(expectedIdx), idx)
-
-	idx, cached = pc.Proposer(&forkchoicetypes.Checkpoint{}, 1)
-	// TODO: update this test when we integrate a proposer id cache
-	require.Equal(t, false, cached)
-	require.Equal(t, primitives.ValidatorIndex(0), idx)
-}

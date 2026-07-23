@@ -13,18 +13,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/async/event"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/crypto/bls"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/io/file"
-	"github.com/OffchainLabs/prysm/v6/monitoring/tracing/trace"
-	validatorpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1/validator-client"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
-	"github.com/OffchainLabs/prysm/v6/validator/accounts/petnames"
-	"github.com/OffchainLabs/prysm/v6/validator/keymanager"
-	"github.com/OffchainLabs/prysm/v6/validator/keymanager/remote-web3signer/internal"
-	"github.com/OffchainLabs/prysm/v6/validator/keymanager/remote-web3signer/types"
+	"github.com/OffchainLabs/prysm/v7/async/event"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/crypto/bls"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/io/file"
+	"github.com/OffchainLabs/prysm/v7/monitoring/tracing/trace"
+	validatorpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1/validator-client"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
+	"github.com/OffchainLabs/prysm/v7/validator/accounts/petnames"
+	"github.com/OffchainLabs/prysm/v7/validator/keymanager"
+	"github.com/OffchainLabs/prysm/v7/validator/keymanager/remote-web3signer/internal"
+	"github.com/OffchainLabs/prysm/v7/validator/keymanager/remote-web3signer/types"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-playground/validator/v10"
@@ -148,13 +148,26 @@ func NewKeymanager(ctx context.Context, cfg *SetupConfig) (*Keymanager, error) {
 		km.lock.Lock()
 		km.providedPublicKeys = slices.Collect(maps.Values(fileKeys))
 		km.lock.Unlock()
-		// create a file watcher
+		watcherReady := make(chan error, 1)
+		var watcherReadyOnce sync.Once
+		markWatcherReady := func(err error) {
+			watcherReadyOnce.Do(func() { watcherReady <- err })
+		}
 		go func() {
-			err = km.refreshRemoteKeysFromFileChangesWithRetry(ctx, retryDelay)
-			if err != nil {
-				log.WithError(err).Error("Could not refresh remote keys from file changes")
+			watchErr := km.refreshRemoteKeysFromFileChangesWithRetry(ctx, retryDelay, markWatcherReady)
+			if watchErr != nil {
+				markWatcherReady(watchErr)
+				log.WithError(watchErr).Error("Could not refresh remote keys from file changes")
 			}
 		}()
+		select {
+		case err := <-watcherReady:
+			if err != nil {
+				return nil, errors.Wrap(err, "could not initialize remote signer key file watcher")
+			}
+		case <-ctx.Done():
+			return nil, errors.Wrap(ctx.Err(), "could not initialize remote signer key file watcher")
+		}
 	} else {
 		km.lock.Lock()
 		km.providedPublicKeys = slices.Collect(maps.Values(flagLoadedKeys))
@@ -164,23 +177,39 @@ func NewKeymanager(ctx context.Context, cfg *SetupConfig) (*Keymanager, error) {
 	return km, nil
 }
 
-func (km *Keymanager) refreshRemoteKeysFromFileChangesWithRetry(ctx context.Context, retryDelay time.Duration) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
+func (km *Keymanager) refreshRemoteKeysFromFileChangesWithRetry(ctx context.Context, retryDelay time.Duration, markReady func(error)) error {
+	initialized := false
+	markInitialized := func(err error) {
+		initialized = true
+		markReady(err)
 	}
-	if km.retriesRemaining == 0 {
-		return errors.New("file check retries remaining exceeded")
-	}
-	err := km.refreshRemoteKeysFromFileChanges(ctx)
-	if err != nil {
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if km.retriesRemaining == 0 {
+			return errors.New("file check retries remaining exceeded")
+		}
+		err := km.refreshRemoteKeysFromFileChanges(ctx, markInitialized)
+		if err == nil {
+			return nil
+		}
+		// Retries only make sense once the watcher has worked at least once.
+		// Before that, fail startup immediately instead of blocking NewKeymanager
+		// through the retry ladder.
+		if !initialized {
+			return err
+		}
 		km.updatePublicKeys(slices.Collect(maps.Values(km.flagLoadedKeysMap))) // update the keys to flag provided defaults
 		km.retriesRemaining--
 		log.WithError(err).Debug("Error occurred on key refresh")
 		log.WithFields(logrus.Fields{"path": km.keyFilePath, "retriesRemaining": km.retriesRemaining, "retryDelay": retryDelay}).Warnf("Could not refresh keys. Retrying...")
-		time.Sleep(retryDelay)
-		return km.refreshRemoteKeysFromFileChangesWithRetry(ctx, retryDelay)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(retryDelay):
+		}
 	}
-	return nil
 }
 
 func (km *Keymanager) readKeyFile() ([][48]byte, map[string][48]byte, error) {
@@ -270,13 +299,7 @@ func (km *Keymanager) savePublicKeysToFile(providedPublicKeys map[string][48]byt
 	return nil
 }
 
-func (km *Keymanager) arePublicKeysEmpty() bool {
-	km.lock.RLock()
-	defer km.lock.RUnlock()
-	return len(km.providedPublicKeys) == 0
-}
-
-func (km *Keymanager) refreshRemoteKeysFromFileChanges(ctx context.Context) error {
+func (km *Keymanager) refreshRemoteKeysFromFileChanges(ctx context.Context, markReady func(error)) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return errors.Wrap(err, "could not initialize file watcher")
@@ -296,18 +319,25 @@ func (km *Keymanager) refreshRemoteKeysFromFileChanges(ctx context.Context) erro
 	}
 	log.WithField("path", km.keyFilePath).Info("Successfully initialized file watcher")
 	km.retriesRemaining = maxRetries // reset retries to default
-	// reinitialize keys if watcher reinitialized
-	if km.arePublicKeysEmpty() {
-		_, fk, err := km.readKeyFile()
-		if err != nil {
-			return errors.Wrap(err, "could not read key file")
-		}
-		maps.Copy(fk, km.flagLoadedKeysMap)
-		if err = km.savePublicKeysToFile(fk); err != nil {
-			return errors.Wrap(err, "could not save public keys to file")
-		}
-		km.updatePublicKeys(slices.Collect(maps.Values(fk)))
+	// Reload keys on every watcher (re)initialization: a failed refresh resets the
+	// in-memory keys to flag-provided defaults, so a recovery must restore the
+	// file-loaded set even when the flag-provided keys are not empty.
+	fileKeys, _, err := km.readKeyFile()
+	if err != nil {
+		return errors.Wrap(err, "could not read key file")
 	}
+	if len(fileKeys) == 0 {
+		log.Warnln("Remote signer key file no longer has keys, defaulting to flag provided keys")
+		fileKeys = slices.Collect(maps.Values(km.flagLoadedKeysMap))
+	}
+	currentKeys, err := km.FetchValidatingPublicKeys(ctx)
+	if err != nil {
+		return errors.Wrap(err, "could not fetch current keys")
+	}
+	if !slices.Equal(currentKeys, fileKeys) {
+		km.updatePublicKeys(fileKeys)
+	}
+	markReady(nil)
 	for {
 		select {
 		case e, ok := <-watcher.Events:
@@ -361,10 +391,10 @@ func (km *Keymanager) refreshRemoteKeysFromFileChanges(ctx context.Context) erro
 
 func (km *Keymanager) updatePublicKeys(keys [][48]byte) {
 	km.lock.Lock()
-	defer km.lock.Unlock()
 	km.providedPublicKeys = keys
+	km.lock.Unlock()
 	km.accountsChangedFeed.Send(keys)
-	log.WithField("count", len(km.providedPublicKeys)).Debug("Updated public keys")
+	log.WithField("count", len(keys)).Debug("Updated public keys")
 }
 
 // FetchValidatingPublicKeys fetches the validating public keys
@@ -432,6 +462,18 @@ func getSignRequestJson(ctx context.Context, validator *validator.Validate, requ
 		return handleBlockFulu(ctx, validator, request, genesisValidatorsRoot)
 	case *validatorpb.SignRequest_BlindedBlockFulu:
 		return handleBlindedBlockFulu(ctx, validator, request, genesisValidatorsRoot)
+	case *validatorpb.SignRequest_BlockGloas:
+		// TODO: Implement Gloas block signing for web3signer.
+		return nil, fmt.Errorf("web3signer Gloas block signing not yet implemented")
+	case *validatorpb.SignRequest_ExecutionPayloadEnvelope:
+		// TODO: Implement execution payload envelope signing for web3signer.
+		return nil, fmt.Errorf("web3signer execution payload envelope signing not yet implemented")
+	case *validatorpb.SignRequest_ProposerPreference:
+		// TODO: Implement proposer preferences signing for web3signer.
+		return nil, fmt.Errorf("web3signer proposer preferences signing not yet implemented")
+	case *validatorpb.SignRequest_RequestAuth:
+		// TODO: Implement builder request auth signing for web3signer.
+		return nil, fmt.Errorf("web3signer request auth signing not yet implemented")
 
 	// We do not support "DEPOSIT" type.
 	/*
@@ -756,7 +798,7 @@ func (km *Keymanager) ListKeymanagerAccounts(ctx context.Context, cfg keymanager
 // DisplayRemotePublicKeys prints remote public keys to stdout.
 func DisplayRemotePublicKeys(validatingPubKeys [][48]byte) {
 	au := aurora.NewAurora(true)
-	for i := 0; i < len(validatingPubKeys); i++ {
+	for i := range validatingPubKeys {
 		fmt.Println("")
 		fmt.Printf(
 			"%s\n", au.BrightGreen(petnames.DeterministicName(validatingPubKeys[i][:], "-")).Bold(),

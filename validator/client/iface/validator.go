@@ -4,14 +4,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/api/client/event"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/proposer"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/crypto/bls"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	validatorpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1/validator-client"
-	"github.com/OffchainLabs/prysm/v6/validator/keymanager"
+	"github.com/OffchainLabs/prysm/v7/api/client/event"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/proposer"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/crypto/bls"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	validatorpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1/validator-client"
+	"github.com/OffchainLabs/prysm/v7/validator/keymanager"
 )
 
 // ValidatorRole defines the validator role.
@@ -30,6 +30,8 @@ const (
 	RoleSyncCommittee
 	// RoleSyncCommitteeAggregator means the validator should aggregate sync committee messages and submit a sync committee contribution.
 	RoleSyncCommitteeAggregator
+	// RolePTCMember means the validator should submit a payload attestation.
+	RolePTCMember
 )
 
 // Validator interface defines the primary methods of a validator client.
@@ -45,14 +47,15 @@ type Validator interface {
 	SlotDeadline(slot primitives.Slot) time.Time
 	LogValidatorGainsAndLosses(ctx context.Context, slot primitives.Slot) error
 	UpdateDuties(ctx context.Context) error
+	MaybeRetryMissingNextDuties(ctx context.Context, slot primitives.Slot)
 	RolesAt(ctx context.Context, slot primitives.Slot) (map[[fieldparams.BLSPubkeyLength]byte][]ValidatorRole, error) // validator pubKey -> roles
 	SubmitAttestation(ctx context.Context, slot primitives.Slot, pubKey [fieldparams.BLSPubkeyLength]byte)
 	ProposeBlock(ctx context.Context, slot primitives.Slot, pubKey [fieldparams.BLSPubkeyLength]byte)
 	SubmitAggregateAndProof(ctx context.Context, slot primitives.Slot, pubKey [fieldparams.BLSPubkeyLength]byte)
 	SubmitSyncCommitteeMessage(ctx context.Context, slot primitives.Slot, pubKey [fieldparams.BLSPubkeyLength]byte)
 	SubmitSignedContributionAndProof(ctx context.Context, slot primitives.Slot, pubKey [fieldparams.BLSPubkeyLength]byte)
-	LogSubmittedAtts(slot primitives.Slot)
-	LogSubmittedSyncCommitteeMessages()
+	SubmitPayloadAttestation(ctx context.Context, slot primitives.Slot, pubKey [fieldparams.BLSPubkeyLength]byte)
+	LogSubmissions(slot primitives.Slot)
 	UpdateDomainDataCaches(ctx context.Context, slot primitives.Slot)
 	WaitForKeymanagerInitialization(ctx context.Context) error
 	Keymanager() (keymanager.IKeymanager, error)
@@ -60,7 +63,7 @@ type Validator interface {
 	CheckDoppelGanger(ctx context.Context) error
 	PushProposerSettings(ctx context.Context, slot primitives.Slot, forceFullPush bool) error
 	SignValidatorRegistrationRequest(ctx context.Context, signer SigningFunc, newValidatorRegistration *ethpb.ValidatorRegistrationV1) (*ethpb.SignedValidatorRegistrationV1, bool /* isCached */, error)
-	StartEventStream(ctx context.Context, topics []string)
+	EnsureEventStream(ctx context.Context, topics []string)
 	EventStreamIsRunning() bool
 	ProcessEvent(ctx context.Context, event *event.Event)
 	ProposerSettings() *proposer.Settings
@@ -69,7 +72,7 @@ type Validator interface {
 	SetGraffiti(ctx context.Context, pubKey [fieldparams.BLSPubkeyLength]byte, graffiti []byte) error
 	DeleteGraffiti(ctx context.Context, pubKey [fieldparams.BLSPubkeyLength]byte) error
 	Host() string
-	FindHealthyHost(ctx context.Context) bool
+	EnsureReady(ctx context.Context) bool
 	SetTicker()
 }
 

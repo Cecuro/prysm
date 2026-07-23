@@ -13,34 +13,35 @@ import (
 	"time"
 
 	"github.com/OffchainLabs/go-bitfield"
-	"github.com/OffchainLabs/prysm/v6/api"
-	"github.com/OffchainLabs/prysm/v6/api/server/structs"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/blockchain/kzg"
-	chainMock "github.com/OffchainLabs/prysm/v6/beacon-chain/blockchain/testing"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/transition"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/db"
-	dbTest "github.com/OffchainLabs/prysm/v6/beacon-chain/db/testing"
-	doublylinkedtree "github.com/OffchainLabs/prysm/v6/beacon-chain/forkchoice/doubly-linked-tree"
-	mockp2p "github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/testing"
-	rpctesting "github.com/OffchainLabs/prysm/v6/beacon-chain/rpc/eth/shared/testing"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/rpc/lookup"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/rpc/testutil"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	mockSync "github.com/OffchainLabs/prysm/v6/beacon-chain/sync/initial-sync/testing"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/interfaces"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/crypto/bls"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/network/httputil"
-	eth "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	mock2 "github.com/OffchainLabs/prysm/v6/testing/mock"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/api"
+	"github.com/OffchainLabs/prysm/v7/api/server/structs"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/blockchain/kzg"
+	chainMock "github.com/OffchainLabs/prysm/v7/beacon-chain/blockchain/testing"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/transition"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/db"
+	dbTest "github.com/OffchainLabs/prysm/v7/beacon-chain/db/testing"
+	doublylinkedtree "github.com/OffchainLabs/prysm/v7/beacon-chain/forkchoice/doubly-linked-tree"
+	mockp2p "github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/testing"
+	rpctesting "github.com/OffchainLabs/prysm/v7/beacon-chain/rpc/eth/shared/testing"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/rpc/lookup"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/rpc/testutil"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	mockSync "github.com/OffchainLabs/prysm/v7/beacon-chain/sync/initial-sync/testing"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/crypto/bls"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/network/httputil"
+	eth "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	mock2 "github.com/OffchainLabs/prysm/v7/testing/mock"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/pkg/errors"
 	ssz "github.com/prysmaticlabs/fastssz"
@@ -48,6 +49,14 @@ import (
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/mock/gomock"
 )
+
+// fillGloasBlockTestData populates a Gloas block with non-zero test values for the
+// Gloas-specific fields: SignedExecutionPayloadBid and PayloadAttestations.
+func fillGloasBlockTestData(b *eth.SignedBeaconBlockGloas, numPayloadAttestations int) {
+	slot := b.Block.Slot
+	b.Block.Body.SignedExecutionPayloadBid = util.GenerateTestSignedExecutionPayloadBid(slot)
+	b.Block.Body.PayloadAttestations = util.GenerateTestPayloadAttestations(numPayloadAttestations, slot)
+}
 
 func fillDBTestBlocks(ctx context.Context, t *testing.T, beaconDB db.Database) (*eth.SignedBeaconBlock, []*eth.BeaconBlockContainer) {
 	parentRoot := [32]byte{1, 2, 3}
@@ -61,7 +70,7 @@ func fillDBTestBlocks(ctx context.Context, t *testing.T, beaconDB db.Database) (
 	count := primitives.Slot(100)
 	blks := make([]interfaces.ReadOnlySignedBeaconBlock, count)
 	blkContainers := make([]*eth.BeaconBlockContainer, count)
-	for i := primitives.Slot(0); i < count; i++ {
+	for i := range count {
 		b := util.NewBeaconBlock()
 		b.Block.Slot = i
 		b.Block.ParentRoot = bytesutil.PadTo([]byte{uint8(i)}, 32)
@@ -334,6 +343,50 @@ func TestGetBlockV2(t *testing.T) {
 		require.NoError(t, err)
 		assert.DeepEqual(t, blk, b)
 	})
+	t.Run("gloas", func(t *testing.T) {
+		b := util.NewBeaconBlockGloas()
+		b.Block.Slot = 123
+		fillGloasBlockTestData(b, 2)
+		sb, err := blocks.NewSignedBeaconBlock(b)
+		require.NoError(t, err)
+		mockBlockFetcher := &testutil.MockBlocker{BlockToReturn: sb}
+		mockChainService := &chainMock.ChainService{
+			FinalizedRoots: map[[32]byte]bool{},
+		}
+		s := &Server{
+			OptimisticModeFetcher: mockChainService,
+			FinalizationFetcher:   mockChainService,
+			Blocker:               mockBlockFetcher,
+		}
+
+		request := httptest.NewRequest(http.MethodGet, "http://foo.example/eth/v2/beacon/blocks/{block_id}", nil)
+		request.SetPathValue("block_id", "head")
+		writer := httptest.NewRecorder()
+		writer.Body = &bytes.Buffer{}
+
+		s.GetBlockV2(writer, request)
+		require.Equal(t, http.StatusOK, writer.Code)
+		resp := &structs.GetBlockV2Response{}
+		require.NoError(t, json.Unmarshal(writer.Body.Bytes(), resp))
+		assert.Equal(t, version.String(version.Gloas), resp.Version)
+		sbb := &structs.SignedBeaconBlockGloas{Message: &structs.BeaconBlockGloas{}}
+		require.NoError(t, json.Unmarshal(resp.Data.Message, sbb.Message))
+		sbb.Signature = resp.Data.Signature
+		blk, err := sbb.ToConsensus()
+		require.NoError(t, err)
+		assert.DeepEqual(t, blk, b)
+
+		// Verify Gloas-specific fields are correctly serialized/deserialized
+		require.NotNil(t, blk.Block.Body.SignedExecutionPayloadBid)
+		assert.Equal(t, primitives.Slot(123), blk.Block.Body.SignedExecutionPayloadBid.Message.Slot)
+		assert.Equal(t, primitives.BuilderIndex(1), blk.Block.Body.SignedExecutionPayloadBid.Message.BuilderIndex)
+		require.Equal(t, 2, len(blk.Block.Body.PayloadAttestations))
+		for _, att := range blk.Block.Body.PayloadAttestations {
+			assert.Equal(t, primitives.Slot(123), att.Data.Slot)
+			assert.Equal(t, true, att.Data.PayloadPresent)
+			assert.Equal(t, true, att.Data.BlobDataAvailable)
+		}
+	})
 	t.Run("execution optimistic", func(t *testing.T) {
 		b := util.NewBeaconBlockBellatrix()
 		sb, err := blocks.NewSignedBeaconBlock(b)
@@ -572,6 +625,37 @@ func TestGetBlockSSZV2(t *testing.T) {
 		sszExpected, err := b.MarshalSSZ()
 		require.NoError(t, err)
 		assert.DeepEqual(t, sszExpected, writer.Body.Bytes())
+	})
+	t.Run("gloas", func(t *testing.T) {
+		b := util.NewBeaconBlockGloas()
+		b.Block.Slot = 123
+		fillGloasBlockTestData(b, 2)
+		sb, err := blocks.NewSignedBeaconBlock(b)
+		require.NoError(t, err)
+
+		s := &Server{
+			Blocker: &testutil.MockBlocker{BlockToReturn: sb},
+		}
+
+		request := httptest.NewRequest(http.MethodGet, "http://foo.example/eth/v2/beacon/blocks/{block_id}", nil)
+		request.SetPathValue("block_id", "head")
+		request.Header.Set("Accept", api.OctetStreamMediaType)
+		writer := httptest.NewRecorder()
+		writer.Body = &bytes.Buffer{}
+
+		s.GetBlockV2(writer, request)
+		require.Equal(t, http.StatusOK, writer.Code)
+		assert.Equal(t, version.String(version.Gloas), writer.Header().Get(api.VersionHeader))
+		sszExpected, err := b.MarshalSSZ()
+		require.NoError(t, err)
+		assert.DeepEqual(t, sszExpected, writer.Body.Bytes())
+
+		// Verify SSZ round-trip preserves Gloas-specific fields
+		decoded := &eth.SignedBeaconBlockGloas{}
+		require.NoError(t, decoded.UnmarshalSSZ(writer.Body.Bytes()))
+		require.NotNil(t, decoded.Block.Body.SignedExecutionPayloadBid)
+		assert.Equal(t, primitives.Slot(123), decoded.Block.Body.SignedExecutionPayloadBid.Message.Slot)
+		require.Equal(t, 2, len(decoded.Block.Body.PayloadAttestations))
 	})
 }
 
@@ -2444,6 +2528,65 @@ func TestValidateConsensus(t *testing.T) {
 	}))
 }
 
+func TestValidateGossip(t *testing.T) {
+	ctx := t.Context()
+
+	parentState, privs := util.DeterministicGenesisState(t, params.MinimalSpecConfig().MinGenesisActiveValidatorCount)
+	parentBlock, err := util.GenerateFullBlock(parentState, privs, util.DefaultBlockGenConfig(), parentState.Slot())
+	require.NoError(t, err)
+	parentSbb, err := blocks.NewSignedBeaconBlock(parentBlock)
+	require.NoError(t, err)
+	st, err := transition.ExecuteStateTransition(ctx, parentState, parentSbb)
+	require.NoError(t, err)
+	block, err := util.GenerateFullBlock(st, privs, util.DefaultBlockGenConfig(), st.Slot())
+	require.NoError(t, err)
+	parentRoot, err := parentSbb.Block().HashTreeRoot()
+	require.NoError(t, err)
+	// ProcessSlots advances the head state in place, so each run needs a fresh copy.
+	newServer := func() *Server {
+		return &Server{
+			Blocker:     &testutil.MockBlocker{RootBlockMap: map[[32]byte]interfaces.ReadOnlySignedBeaconBlock{parentRoot: parentSbb}},
+			Stater:      &testutil.MockStater{StatesByRoot: map[[32]byte]state.BeaconState{bytesutil.ToBytes32(parentBlock.Block.StateRoot): parentState}},
+			HeadFetcher: &chainMock.ChainService{State: parentState.Copy(), Root: parentRoot[:]},
+		}
+	}
+	genericBlock := &eth.GenericSignedBeaconBlock{
+		Block: &eth.GenericSignedBeaconBlock_Phase0{
+			Phase0: block,
+		},
+	}
+
+	t.Run("valid signature", func(t *testing.T) {
+		require.NoError(t, newServer().validateGossip(ctx, genericBlock))
+	})
+	t.Run("routed via broadcast_validation=gossip", func(t *testing.T) {
+		r := httptest.NewRequest(http.MethodPost, "http://foo.example?broadcast_validation=gossip", nil)
+		require.NoError(t, newServer().validateBroadcast(ctx, r, genericBlock))
+	})
+	t.Run("invalid signature", func(t *testing.T) {
+		bad := &eth.SignedBeaconBlock{Block: block.Block, Signature: bytesutil.PadTo([]byte("bad"), 96)}
+		err := newServer().validateGossip(ctx, &eth.GenericSignedBeaconBlock{
+			Block: &eth.GenericSignedBeaconBlock_Phase0{Phase0: bad},
+		})
+		require.ErrorContains(t, "could not verify block signature", err)
+	})
+	t.Run("invalid signature routed via broadcast_validation=gossip", func(t *testing.T) {
+		bad := &eth.SignedBeaconBlock{Block: block.Block, Signature: bytesutil.PadTo([]byte("bad"), 96)}
+		r := httptest.NewRequest(http.MethodPost, "http://foo.example?broadcast_validation=gossip", nil)
+		err := newServer().validateBroadcast(ctx, r, &eth.GenericSignedBeaconBlock{
+			Block: &eth.GenericSignedBeaconBlock_Phase0{Phase0: bad},
+		})
+		require.ErrorContains(t, "gossip validation failed", err)
+	})
+	t.Run("no validation by default", func(t *testing.T) {
+		bad := &eth.SignedBeaconBlock{Block: block.Block, Signature: bytesutil.PadTo([]byte("bad"), 96)}
+		r := httptest.NewRequest(http.MethodPost, "http://foo.example", nil)
+		require.NoError(t, (&Server{}).validateBroadcast(ctx, r, &eth.GenericSignedBeaconBlock{
+			Block: &eth.GenericSignedBeaconBlock_Phase0{Phase0: bad},
+		}))
+	})
+}
+
 func TestValidateEquivocation(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		st, err := util.NewBeaconState()
@@ -2508,6 +2651,10 @@ func TestServer_GetBlockRoot(t *testing.T) {
 			HeadFetcher:           mockChainFetcher,
 			OptimisticModeFetcher: mockChainFetcher,
 			FinalizationFetcher:   mockChainFetcher,
+			Blocker: &lookup.BeaconDbBlocker{
+				BeaconDB:         beaconDB,
+				ChainInfoFetcher: mockChainFetcher,
+			},
 		}
 
 		root, err := genBlk.Block.HashTreeRoot()
@@ -2523,7 +2670,7 @@ func TestServer_GetBlockRoot(t *testing.T) {
 			{
 				name:     "bad formatting",
 				blockID:  map[string]string{"block_id": "3bad0"},
-				wantErr:  "Could not parse block ID",
+				wantErr:  "Invalid block ID",
 				wantCode: http.StatusBadRequest,
 			},
 			{
@@ -2571,7 +2718,7 @@ func TestServer_GetBlockRoot(t *testing.T) {
 			{
 				name:     "non-existent root",
 				blockID:  map[string]string{"block_id": hexutil.Encode(bytesutil.PadTo([]byte("hi there"), 32))},
-				wantErr:  "Could not find block",
+				wantErr:  "Block not found",
 				wantCode: http.StatusNotFound,
 			},
 			{
@@ -2584,7 +2731,7 @@ func TestServer_GetBlockRoot(t *testing.T) {
 			{
 				name:     "no block",
 				blockID:  map[string]string{"block_id": "105"},
-				wantErr:  "Could not find any blocks with given slot",
+				wantErr:  "Block not found",
 				wantCode: http.StatusNotFound,
 			},
 		}
@@ -2632,6 +2779,10 @@ func TestServer_GetBlockRoot(t *testing.T) {
 			HeadFetcher:           mockChainFetcher,
 			OptimisticModeFetcher: mockChainFetcher,
 			FinalizationFetcher:   mockChainFetcher,
+			Blocker: &lookup.BeaconDbBlocker{
+				BeaconDB:         beaconDB,
+				ChainInfoFetcher: mockChainFetcher,
+			},
 		}
 
 		request := httptest.NewRequest(http.MethodGet, url, nil)
@@ -2667,6 +2818,10 @@ func TestServer_GetBlockRoot(t *testing.T) {
 			HeadFetcher:           mockChainFetcher,
 			OptimisticModeFetcher: mockChainFetcher,
 			FinalizationFetcher:   mockChainFetcher,
+			Blocker: &lookup.BeaconDbBlocker{
+				BeaconDB:         beaconDB,
+				ChainInfoFetcher: mockChainFetcher,
+			},
 		}
 		t.Run("true", func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, url, nil)
@@ -3756,6 +3911,7 @@ func Test_validateBlobs(t *testing.T) {
 	})
 
 	t.Run("Fulu block with valid cell proofs", func(t *testing.T) {
+		const numberOfColumns = fieldparams.NumberOfColumns
 		blk := util.NewBeaconBlockFulu()
 		blk.Block.Slot = fs
 
@@ -3765,7 +3921,7 @@ func Test_validateBlobs(t *testing.T) {
 		fuluBlobs := make([][]byte, blobCount)
 		var kzgBlobs []kzg.Blob
 
-		for i := 0; i < blobCount; i++ {
+		for i := range blobCount {
 			blob := util.GetRandBlob(int64(i))
 			fuluBlobs[i] = blob[:]
 			var kzgBlob kzg.Blob
@@ -3783,15 +3939,14 @@ func Test_validateBlobs(t *testing.T) {
 		require.NoError(t, err)
 
 		// Generate cell proofs for the blobs (flattened format like execution client)
-		numberOfColumns := params.BeaconConfig().NumberOfColumns
 		cellProofs := make([][]byte, uint64(blobCount)*numberOfColumns)
-		for blobIdx := 0; blobIdx < blobCount; blobIdx++ {
-			cellsAndProofs, err := kzg.ComputeCellsAndKZGProofs(&kzgBlobs[blobIdx])
+		for blobIdx := range blobCount {
+			_, proofs, err := kzg.ComputeCellsAndKZGProofs(&kzgBlobs[blobIdx])
 			require.NoError(t, err)
 
-			for colIdx := uint64(0); colIdx < numberOfColumns; colIdx++ {
-				cellProofIdx := uint64(blobIdx)*numberOfColumns + colIdx
-				cellProofs[cellProofIdx] = cellsAndProofs.Proofs[colIdx][:]
+			for colIdx := range numberOfColumns {
+				cellProofIdx := blobIdx*numberOfColumns + colIdx
+				cellProofs[cellProofIdx] = proofs[colIdx][:]
 			}
 		}
 
@@ -3808,7 +3963,7 @@ func Test_validateBlobs(t *testing.T) {
 		blobCount := 2
 		commitments := make([][]byte, blobCount)
 		fuluBlobs := make([][]byte, blobCount)
-		for i := 0; i < blobCount; i++ {
+		for i := range blobCount {
 			blob := util.GetRandBlob(int64(i))
 			fuluBlobs[i] = blob[:]
 
@@ -3977,7 +4132,7 @@ func TestGetPendingConsolidations(t *testing.T) {
 		consolidationSize := (&eth.PendingConsolidation{}).SizeSSZ()
 		require.Equal(t, len(responseBytes), consolidationSize*len(cs))
 
-		for i := 0; i < len(cs); i++ {
+		for i := range cs {
 			start := i * consolidationSize
 			end := start + consolidationSize
 
@@ -4103,7 +4258,7 @@ func TestGetPendingDeposits(t *testing.T) {
 
 	validators := st.Validators()
 	dummySig := make([]byte, 96)
-	for j := 0; j < 96; j++ {
+	for j := range 96 {
 		dummySig[j] = byte(j)
 	}
 	deps := make([]*eth.PendingDeposit, 10)
@@ -4170,7 +4325,7 @@ func TestGetPendingDeposits(t *testing.T) {
 		depositSize := (&eth.PendingDeposit{}).SizeSSZ()
 		require.Equal(t, len(responseBytes), depositSize*len(deps))
 
-		for i := 0; i < len(deps); i++ {
+		for i := range deps {
 			start := i * depositSize
 			end := start + depositSize
 
@@ -4357,7 +4512,7 @@ func TestGetPendingPartialWithdrawals(t *testing.T) {
 		withdrawalSize := (&eth.PendingPartialWithdrawal{}).SizeSSZ()
 		require.Equal(t, len(responseBytes), withdrawalSize*len(withdrawals))
 
-		for i := 0; i < len(withdrawals); i++ {
+		for i := range withdrawals {
 			start := i * withdrawalSize
 			end := start + withdrawalSize
 
@@ -4487,7 +4642,7 @@ func TestGetProposerLookahead(t *testing.T) {
 	st, _ := util.DeterministicGenesisStateFulu(t, uint64(numValidators))
 	lookaheadSize := int(params.BeaconConfig().MinSeedLookahead+1) * int(params.BeaconConfig().SlotsPerEpoch)
 	lookahead := make([]primitives.ValidatorIndex, lookaheadSize)
-	for i := 0; i < lookaheadSize; i++ {
+	for i := range lookaheadSize {
 		lookahead[i] = primitives.ValidatorIndex(i % numValidators) // Cycle through validators
 	}
 
@@ -4525,7 +4680,7 @@ func TestGetProposerLookahead(t *testing.T) {
 
 		// Verify the data
 		require.Equal(t, lookaheadSize, len(resp.Data))
-		for i := 0; i < lookaheadSize; i++ {
+		for i := range lookaheadSize {
 			expectedIdx := strconv.FormatUint(uint64(i%numValidators), 10)
 			require.Equal(t, expectedIdx, resp.Data[i])
 		}
@@ -4546,7 +4701,7 @@ func TestGetProposerLookahead(t *testing.T) {
 		require.Equal(t, len(responseBytes), validatorIndexSize*lookaheadSize)
 
 		recoveredIndices := make([]primitives.ValidatorIndex, lookaheadSize)
-		for i := 0; i < lookaheadSize; i++ {
+		for i := range lookaheadSize {
 			start := i * validatorIndexSize
 			end := start + validatorIndexSize
 

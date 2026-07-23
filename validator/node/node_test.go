@@ -8,16 +8,17 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/cmd"
-	"github.com/OffchainLabs/prysm/v6/cmd/validator/flags"
-	"github.com/OffchainLabs/prysm/v6/io/file"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/validator/accounts"
-	"github.com/OffchainLabs/prysm/v6/validator/accounts/wallet"
-	"github.com/OffchainLabs/prysm/v6/validator/db/kv"
-	"github.com/OffchainLabs/prysm/v6/validator/keymanager"
-	remoteweb3signer "github.com/OffchainLabs/prysm/v6/validator/keymanager/remote-web3signer"
+	"github.com/OffchainLabs/prysm/v7/cmd"
+	"github.com/OffchainLabs/prysm/v7/cmd/validator/flags"
+	"github.com/OffchainLabs/prysm/v7/config/features"
+	"github.com/OffchainLabs/prysm/v7/io/file"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/validator/accounts"
+	"github.com/OffchainLabs/prysm/v7/validator/accounts/wallet"
+	"github.com/OffchainLabs/prysm/v7/validator/db/kv"
+	"github.com/OffchainLabs/prysm/v7/validator/keymanager"
+	remoteweb3signer "github.com/OffchainLabs/prysm/v7/validator/keymanager/remote-web3signer"
 	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/urfave/cli/v2"
 )
@@ -41,6 +42,8 @@ func TestNode_Builds(t *testing.T) {
 	set.String("wallet-password-file", passwordFile, "path to wallet password")
 	set.String("keymanager-kind", "imported", "keymanager kind")
 	set.String("verbosity", "debug", "log verbosity")
+	set.String("beacon-rpc-provider", "localhost:4000", "beacon node RPC endpoint")
+	set.String("beacon-rest-api-provider", "http://localhost:3500", "beacon node REST API endpoint")
 	require.NoError(t, set.Set(flags.WalletPasswordFileFlag.Name, passwordFile))
 	ctx := cli.NewContext(&app, set, nil)
 	opts := []accounts.Option{
@@ -83,25 +86,16 @@ func TestGetLegacyDatabaseLocation(t *testing.T) {
 	nonExistingWalletDir := t.TempDir()
 
 	testCases := []struct {
-		name                      string
-		isInteropNumValidatorsSet bool
-		isWeb3SignerURLFlagSet    bool
-		dataDir                   string
-		dataFile                  string
-		walletDir                 string
-		validatorClient           *ValidatorClient
-		wallet                    *wallet.Wallet
-		expectedDataDir           string
-		expectedDataFile          string
+		name                   string
+		isWeb3SignerURLFlagSet bool
+		dataDir                string
+		dataFile               string
+		walletDir              string
+		validatorClient        *ValidatorClient
+		wallet                 *wallet.Wallet
+		expectedDataDir        string
+		expectedDataFile       string
 	}{
-		{
-			name:                      "interop num validators set",
-			isInteropNumValidatorsSet: true,
-			dataDir:                   dataDir,
-			dataFile:                  dataFile,
-			expectedDataDir:           dataDir,
-			expectedDataFile:          dataFile,
-		},
 		{
 			name:             "dataDir differs from default",
 			dataDir:          dataDir,
@@ -177,7 +171,6 @@ func TestGetLegacyDatabaseLocation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			validatorClient := &ValidatorClient{wallet: tt.wallet}
 			actualDataDir, actualDataFile, err := validatorClient.getLegacyDatabaseLocation(
-				tt.isInteropNumValidatorsSet,
 				tt.isWeb3SignerURLFlagSet,
 				tt.dataDir,
 				tt.dataFile,
@@ -321,4 +314,37 @@ func Test_parseBeaconApiHeaders(t *testing.T) {
 		assert.Equal(t, 1, len(h))
 		assert.DeepEqual(t, []string{"value1"}, h["key1"])
 	})
+}
+
+func TestRegisterValidatorService_DistributedFlag(t *testing.T) {
+	tests := []struct {
+		name                string
+		enableBeaconRESTApi bool
+		wantErrMsg          string
+	}{
+		{
+			name:                "fails when distributed is true but REST API is false",
+			enableBeaconRESTApi: false,
+			wantErrMsg:          "--distributed requires --enable-beacon-rest-api",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetCfg := features.InitWithReset(&features.Flags{EnableBeaconRESTApi: tt.enableBeaconRESTApi})
+			defer resetCfg()
+
+			app := cli.App{}
+			set := flag.NewFlagSet("test", 0)
+			set.Bool(flags.EnableDistributed.Name, false, "")
+			require.NoError(t, set.Set(flags.EnableDistributed.Name, "true"))
+			cliCtx := cli.NewContext(&app, set, nil)
+
+			c := &ValidatorClient{}
+			err := c.registerValidatorService(cliCtx)
+
+			require.NotNil(t, err)
+			require.ErrorContains(t, tt.wantErrMsg, err)
+		})
+	}
 }

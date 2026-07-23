@@ -8,9 +8,9 @@ import (
 	"encoding/binary"
 	"sort"
 
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	eth "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	eth "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 	"github.com/pkg/errors"
 	ssz "github.com/prysmaticlabs/fastssz"
 )
@@ -78,7 +78,7 @@ func (r *BeaconBlockByRootsReq) UnmarshalSSZ(buf []byte) error {
 	}
 	numOfRoots := bufLen / fieldparams.RootLength
 	roots := make([][fieldparams.RootLength]byte, 0, numOfRoots)
-	for i := 0; i < numOfRoots; i++ {
+	for i := range numOfRoots {
 		var rt [fieldparams.RootLength]byte
 		copy(rt[:], buf[i*fieldparams.RootLength:(i+1)*fieldparams.RootLength])
 		roots = append(roots, rt)
@@ -175,7 +175,7 @@ func (b *BlobSidecarsByRootReq) UnmarshalSSZ(buf []byte) error {
 	}
 	count := bufLen / blobIdSize
 	*b = make([]*eth.BlobIdentifier, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		id := &eth.BlobIdentifier{}
 		err := id.UnmarshalSSZ(buf[i*blobIdSize : (i+1)*blobIdSize])
 		if err != nil {
@@ -208,6 +208,64 @@ func (s BlobSidecarsByRootReq) Swap(i, j int) {
 // Len is the number of elements in the collection.
 func (s BlobSidecarsByRootReq) Len() int {
 	return len(s)
+}
+
+// ExecutionPayloadEnvelopesByRootReq section
+
+// ExecutionPayloadEnvelopesByRootReq specifies the execution payload envelopes by roots request type.
+type ExecutionPayloadEnvelopesByRootReq [][fieldparams.RootLength]byte
+
+// MarshalSSZTo marshals the execution payload envelopes by roots request with the provided byte slice.
+func (r *ExecutionPayloadEnvelopesByRootReq) MarshalSSZTo(dst []byte) ([]byte, error) {
+	marshalledObj, err := r.MarshalSSZ()
+	if err != nil {
+		return nil, err
+	}
+	return append(dst, marshalledObj...), nil
+}
+
+// MarshalSSZ Marshals the execution payload envelopes by roots request type into the serialized object.
+func (r *ExecutionPayloadEnvelopesByRootReq) MarshalSSZ() ([]byte, error) {
+	if len(*r) > int(params.BeaconConfig().MaxRequestPayloads) {
+		return nil, errors.Errorf("execution payload envelopes by roots request exceeds max size: %d > %d", len(*r), params.BeaconConfig().MaxRequestPayloads)
+	}
+	buf := make([]byte, 0, r.SizeSSZ())
+	for _, root := range *r {
+		buf = append(buf, root[:]...)
+	}
+	return buf, nil
+}
+
+// SizeSSZ returns the size of the serialized representation.
+func (r *ExecutionPayloadEnvelopesByRootReq) SizeSSZ() int {
+	return len(*r) * fieldparams.RootLength
+}
+
+// UnmarshalSSZ unmarshals the provided bytes buffer into the
+// execution payload envelopes by roots request object.
+func (r *ExecutionPayloadEnvelopesByRootReq) UnmarshalSSZ(buf []byte) error {
+	bufLen := len(buf)
+	maxLength := int(params.BeaconConfig().MaxRequestPayloads * fieldparams.RootLength)
+	if bufLen > maxLength {
+		return errors.Errorf("expected buffer with length of up to %d but received length %d", maxLength, bufLen)
+	}
+	if bufLen%fieldparams.RootLength != 0 {
+		return ssz.ErrIncorrectByteSize
+	}
+	numOfRoots := bufLen / fieldparams.RootLength
+	roots := make([][fieldparams.RootLength]byte, 0, numOfRoots)
+	for i := range numOfRoots {
+		var rt [fieldparams.RootLength]byte
+		copy(rt[:], buf[i*fieldparams.RootLength:(i+1)*fieldparams.RootLength])
+		roots = append(roots, rt)
+	}
+	*r = roots
+	return nil
+}
+
+// Len returns the number of roots in the request.
+func (r ExecutionPayloadEnvelopesByRootReq) Len() int {
+	return len(r)
 }
 
 // ====================================
@@ -323,7 +381,7 @@ func (d DataColumnsByRootIdentifiers) MarshalSSZTo(dst []byte) ([]byte, error) {
 // SizeSSZ implements ssz.Marshaler. It returns the size of the serialized representation.
 func (d DataColumnsByRootIdentifiers) SizeSSZ() int {
 	size := 0
-	for i := 0; i < len(d); i++ {
+	for i := range d {
 		size += 4
 		size += (d)[i].SizeSSZ()
 	}

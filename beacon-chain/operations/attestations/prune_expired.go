@@ -3,9 +3,9 @@ package attestations
 import (
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 )
 
 // pruneExpired prunes attestations pool on every slot interval.
@@ -81,6 +81,14 @@ func (s *Service) pruneExpiredAtts() {
 			expiredBlockAtts.Inc()
 		}
 	}
+
+	expirySlot, err := s.expirySlot()
+	if err != nil {
+		log.WithError(err).Error("Could not get expiry slot for seen aggregated attestations")
+		return
+	}
+
+	s.cfg.Pool.DeleteSeenAggregatedAttestationsBefore(expirySlot)
 }
 
 // Return true if the input slot has been expired.

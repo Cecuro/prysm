@@ -1,3 +1,5 @@
+//go:build minimal
+
 package validator
 
 import (
@@ -6,29 +8,29 @@ import (
 	"testing"
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/api/client/builder"
-	blockchainTest "github.com/OffchainLabs/prysm/v6/beacon-chain/blockchain/testing"
-	builderTest "github.com/OffchainLabs/prysm/v6/beacon-chain/builder/testing"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/cache"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/signing"
-	dbTest "github.com/OffchainLabs/prysm/v6/beacon-chain/db/testing"
-	powtesting "github.com/OffchainLabs/prysm/v6/beacon-chain/execution/testing"
-	doublylinkedtree "github.com/OffchainLabs/prysm/v6/beacon-chain/forkchoice/doubly-linked-tree"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	consensus_types "github.com/OffchainLabs/prysm/v6/consensus-types"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/interfaces"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/crypto/bls"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/encoding/ssz"
-	v1 "github.com/OffchainLabs/prysm/v6/proto/engine/v1"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/api/client/builder"
+	blockchainTest "github.com/OffchainLabs/prysm/v7/beacon-chain/blockchain/testing"
+	builderTest "github.com/OffchainLabs/prysm/v7/beacon-chain/builder/testing"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/cache"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/signing"
+	dbTest "github.com/OffchainLabs/prysm/v7/beacon-chain/db/testing"
+	powtesting "github.com/OffchainLabs/prysm/v7/beacon-chain/execution/testing"
+	doublylinkedtree "github.com/OffchainLabs/prysm/v7/beacon-chain/forkchoice/doubly-linked-tree"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	consensus_types "github.com/OffchainLabs/prysm/v7/consensus-types"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/crypto/bls"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/encoding/ssz"
+	v1 "github.com/OffchainLabs/prysm/v7/proto/engine/v1"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/pkg/errors"
 	logTest "github.com/sirupsen/logrus/hooks/test"
@@ -85,20 +87,20 @@ func TestServer_setExecutionData(t *testing.T) {
 			GetPayloadResponse: &blocks.GetPayloadResponse{ExecutionData: ed},
 			PayloadIDBytes:     id,
 		},
-		HeadFetcher:            &blockchainTest.ChainService{State: capellaTransitionState},
-		FinalizationFetcher:    &blockchainTest.ChainService{},
-		BeaconDB:               beaconDB,
-		PayloadIDCache:         cache.NewPayloadIDCache(),
-		BlockBuilder:           &builderTest.MockBuilderService{HasConfigured: true, Cfg: &builderTest.Config{BeaconDB: beaconDB}},
-		ForkchoiceFetcher:      &blockchainTest.ChainService{},
-		TrackedValidatorsCache: cache.NewTrackedValidatorsCache(),
+		HeadFetcher:              &blockchainTest.ChainService{State: capellaTransitionState},
+		FinalizationFetcher:      &blockchainTest.ChainService{},
+		BeaconDB:                 beaconDB,
+		PayloadIDCache:           cache.NewPayloadIDCache(),
+		BlockBuilder:             &builderTest.MockBuilderService{HasConfigured: true, Cfg: &builderTest.Config{BeaconDB: beaconDB}},
+		ForkchoiceFetcher:        &blockchainTest.ChainService{},
+		ProposerPreferencesCache: cache.NewProposerPreferencesCache(),
 	}
 	gasLimit := uint64(30000000)
 	t.Run("No builder configured. Use local block", func(t *testing.T) {
 		blk, err := blocks.NewSignedBeaconBlock(util.NewBeaconBlockCapella())
 		require.NoError(t, err)
 		b := blk.Block()
-		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState)
+		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState, false)
 		require.NoError(t, err)
 		builderBid, err := vs.getBuilderPayloadAndBlobs(ctx, b.Slot(), b.ProposerIndex(), gasLimit)
 		require.NoError(t, err)
@@ -166,7 +168,7 @@ func TestServer_setExecutionData(t *testing.T) {
 		vs.HeadFetcher = chain
 		b := blk.Block()
 
-		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState)
+		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState, false)
 		require.NoError(t, err)
 		builderBid, err := vs.getBuilderPayloadAndBlobs(ctx, b.Slot(), b.ProposerIndex(), gasLimit)
 		require.NoError(t, err)
@@ -238,7 +240,7 @@ func TestServer_setExecutionData(t *testing.T) {
 		vs.HeadFetcher = chain
 
 		b := blk.Block()
-		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState)
+		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState, false)
 		require.NoError(t, err)
 		builderBid, err := vs.getBuilderPayloadAndBlobs(ctx, b.Slot(), b.ProposerIndex(), gasLimit)
 		require.NoError(t, err)
@@ -309,7 +311,7 @@ func TestServer_setExecutionData(t *testing.T) {
 		vs.HeadFetcher = chain
 
 		b := blk.Block()
-		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState)
+		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState, false)
 		require.NoError(t, err)
 		builderBid, err := vs.getBuilderPayloadAndBlobs(ctx, b.Slot(), b.ProposerIndex(), gasLimit)
 		require.NoError(t, err)
@@ -380,7 +382,7 @@ func TestServer_setExecutionData(t *testing.T) {
 		vs.HeadFetcher = chain
 
 		b := blk.Block()
-		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState)
+		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState, false)
 		require.NoError(t, err)
 		builderBid, err := vs.getBuilderPayloadAndBlobs(ctx, b.Slot(), b.ProposerIndex(), gasLimit)
 		require.NoError(t, err)
@@ -401,7 +403,7 @@ func TestServer_setExecutionData(t *testing.T) {
 		require.NoError(t, err)
 		vs.ExecutionEngineCaller = &powtesting.EngineClient{PayloadIDBytes: id, GetPayloadResponse: &blocks.GetPayloadResponse{ExecutionData: ed, Bid: elBid}}
 		b := blk.Block()
-		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState)
+		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState, false)
 		require.NoError(t, err)
 		builderBid, err := vs.getBuilderPayloadAndBlobs(ctx, b.Slot(), b.ProposerIndex(), gasLimit)
 		require.NoError(t, err)
@@ -428,7 +430,7 @@ func TestServer_setExecutionData(t *testing.T) {
 		require.NoError(t, err)
 		vs.ExecutionEngineCaller = &powtesting.EngineClient{PayloadIDBytes: id, GetPayloadResponse: &blocks.GetPayloadResponse{ExecutionData: ed, Bid: elBid}}
 		b := blk.Block()
-		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState)
+		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState, false)
 		require.NoError(t, err)
 		builderBid, err := vs.getBuilderPayloadAndBlobs(ctx, b.Slot(), b.ProposerIndex(), gasLimit)
 		require.NoError(t, err)
@@ -458,7 +460,7 @@ func TestServer_setExecutionData(t *testing.T) {
 
 		vs.ExecutionEngineCaller = &powtesting.EngineClient{PayloadIDBytes: id, GetPayloadResponse: &blocks.GetPayloadResponse{ExecutionData: ed, Bid: elBid}}
 		b := blk.Block()
-		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState)
+		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState, false)
 		require.NoError(t, err)
 		builderBid, err := vs.getBuilderPayloadAndBlobs(ctx, b.Slot(), b.ProposerIndex(), gasLimit)
 		require.NoError(t, err)
@@ -485,7 +487,7 @@ func TestServer_setExecutionData(t *testing.T) {
 		require.NoError(t, err)
 		vs.ExecutionEngineCaller = &powtesting.EngineClient{PayloadIDBytes: id, GetPayloadResponse: &blocks.GetPayloadResponse{ExecutionData: ed}}
 		b := blk.Block()
-		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState)
+		res, err := vs.getLocalPayload(ctx, b, capellaTransitionState, false)
 		require.NoError(t, err)
 		builderBid, err := vs.getBuilderPayloadAndBlobs(ctx, b.Slot(), b.ProposerIndex(), gasLimit)
 		require.ErrorIs(t, consensus_types.ErrNilObjectWrapped, err) // Builder returns fault. Use local block
@@ -525,7 +527,7 @@ func TestServer_setExecutionData(t *testing.T) {
 			},
 		}
 		blk.SetSlot(primitives.Slot(params.BeaconConfig().DenebForkEpoch) * params.BeaconConfig().SlotsPerEpoch)
-		res, err := vs.getLocalPayload(ctx, blk.Block(), capellaTransitionState)
+		res, err := vs.getLocalPayload(ctx, blk.Block(), capellaTransitionState, false)
 		require.NoError(t, err)
 		require.Equal(t, uint64(4), res.ExecutionData.BlockNumber())
 		require.DeepEqual(t, res.BlobsBundler, blobsBundle)
@@ -618,7 +620,7 @@ func TestServer_setExecutionData(t *testing.T) {
 		require.DeepEqual(t, bid.BlobKzgCommitments, builderKzgCommitments)
 		require.Equal(t, bid.Header.BlockNumber, builderPayload.BlockNumber()) // header should be the same from block
 
-		res, err := vs.getLocalPayload(ctx, blk.Block(), denebTransitionState)
+		res, err := vs.getLocalPayload(ctx, blk.Block(), denebTransitionState, false)
 		require.NoError(t, err)
 		_, bundle, err := setExecutionData(t.Context(), blk, res, builderBid, defaultBuilderBoostFactor)
 		require.NoError(t, err)
@@ -742,7 +744,7 @@ func TestServer_setExecutionData(t *testing.T) {
 		require.DeepEqual(t, bid.ExecutionRequests, eBid.ExecutionRequests())
 		require.Equal(t, bid.Header.BlockNumber, builderPayload.BlockNumber()) // header should be the same from block
 
-		res, err := vs.getLocalPayload(ctx, blk.Block(), denebTransitionState)
+		res, err := vs.getLocalPayload(ctx, blk.Block(), denebTransitionState, false)
 		require.NoError(t, err)
 		_, bundle, err := setExecutionData(t.Context(), blk, res, builderBid, defaultBuilderBoostFactor)
 		require.NoError(t, err)

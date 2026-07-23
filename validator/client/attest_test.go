@@ -11,18 +11,18 @@ import (
 	"time"
 
 	"github.com/OffchainLabs/go-bitfield"
-	"github.com/OffchainLabs/prysm/v6/async/event"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/signing"
-	"github.com/OffchainLabs/prysm/v6/config/features"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	validatorpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1/validator-client"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
+	"github.com/OffchainLabs/prysm/v7/async/event"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/signing"
+	"github.com/OffchainLabs/prysm/v7/config/features"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	validatorpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1/validator-client"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
 	logTest "github.com/sirupsen/logrus/hooks/test"
 	"go.uber.org/mock/gomock"
 	"gopkg.in/d4l3k/messagediff.v1"
@@ -33,7 +33,7 @@ func TestRequestAttestation_ValidatorDutiesRequestFailure(t *testing.T) {
 		t.Run(fmt.Sprintf("SlashingProtectionMinimal:%v", isSlashingProtectionMinimal), func(t *testing.T) {
 			hook := logTest.NewGlobal()
 			validator, _, validatorKey, finish := setup(t, isSlashingProtectionMinimal)
-			validator.duties = &ethpb.ValidatorDutiesContainer{CurrentEpochDuties: []*ethpb.ValidatorDuty{}}
+			validator.duties = testDutyStore()
 			defer finish()
 
 			var pubKey [fieldparams.BLSPubkeyLength]byte
@@ -53,12 +53,11 @@ func TestAttestToBlockHead_SubmitAttestation_EmptyCommittee(t *testing.T) {
 			defer finish()
 			var pubKey [fieldparams.BLSPubkeyLength]byte
 			copy(pubKey[:], validatorKey.PublicKey().Marshal())
-			validator.duties = &ethpb.ValidatorDutiesContainer{CurrentEpochDuties: []*ethpb.ValidatorDuty{
-				{
-					PublicKey:      validatorKey.PublicKey().Marshal(),
-					CommitteeIndex: 0,
-					ValidatorIndex: 0,
-				}}}
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey:      validatorKey.PublicKey().Marshal(),
+				CommitteeIndex: 0,
+				ValidatorIndex: 0,
+			})
 			validator.SubmitAttestation(t.Context(), 0, pubKey)
 			require.LogsContain(t, hook, "Empty committee")
 		})
@@ -72,13 +71,12 @@ func TestAttestToBlockHead_SubmitAttestation_RequestFailure(t *testing.T) {
 
 			validator, m, validatorKey, finish := setup(t, isSlashingProtectionMinimal)
 			defer finish()
-			validator.duties = &ethpb.ValidatorDutiesContainer{CurrentEpochDuties: []*ethpb.ValidatorDuty{
-				{
-					PublicKey:       validatorKey.PublicKey().Marshal(),
-					CommitteeIndex:  5,
-					CommitteeLength: 111,
-					ValidatorIndex:  0,
-				}}}
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey:       validatorKey.PublicKey().Marshal(),
+				CommitteeIndex:  5,
+				CommitteeLength: 111,
+				ValidatorIndex:  0,
+			})
 			m.validatorClient.EXPECT().AttestationData(
 				gomock.Any(), // ctx
 				gomock.AssignableToTypeOf(&ethpb.AttestationDataRequest{}),
@@ -145,14 +143,12 @@ func TestSubmitAttestation_ElectraCommitteeIndex(t *testing.T) {
 				committee := []primitives.ValidatorIndex{0, 3, 4, 2, validatorIndex, 6, 8, 9, 10}
 				var pubKey [fieldparams.BLSPubkeyLength]byte
 				copy(pubKey[:], validatorKey.PublicKey().Marshal())
-				validator.duties = &ethpb.ValidatorDutiesContainer{CurrentEpochDuties: []*ethpb.ValidatorDuty{
-					{
-						PublicKey:       validatorKey.PublicKey().Marshal(),
-						CommitteeIndex:  tt.assignedCommitteeIndex,
-						CommitteeLength: uint64(len(committee)),
-						ValidatorIndex:  validatorIndex,
-					},
-				}}
+				validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+					PublicKey:       validatorKey.PublicKey().Marshal(),
+					CommitteeIndex:  tt.assignedCommitteeIndex,
+					CommitteeLength: uint64(len(committee)),
+					ValidatorIndex:  validatorIndex,
+				})
 
 				var capturedRequest *ethpb.AttestationDataRequest
 				// Capture the actual request to verify committee index
@@ -207,15 +203,13 @@ func TestAttestToBlockHead_AttestsCorrectly(t *testing.T) {
 			committee := []primitives.ValidatorIndex{0, 3, 4, 2, validatorIndex, 6, 8, 9, 10}
 			var pubKey [fieldparams.BLSPubkeyLength]byte
 			copy(pubKey[:], validatorKey.PublicKey().Marshal())
-			validator.duties = &ethpb.ValidatorDutiesContainer{CurrentEpochDuties: []*ethpb.ValidatorDuty{
-				{
-					PublicKey:               validatorKey.PublicKey().Marshal(),
-					CommitteeIndex:          5,
-					CommitteeLength:         uint64(len(committee)),
-					ValidatorCommitteeIndex: 4,
-					ValidatorIndex:          validatorIndex,
-				},
-			}}
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey:               validatorKey.PublicKey().Marshal(),
+				CommitteeIndex:          5,
+				CommitteeLength:         uint64(len(committee)),
+				ValidatorCommitteeIndex: 4,
+				ValidatorIndex:          validatorIndex,
+			})
 
 			beaconBlockRoot := bytesutil.ToBytes32([]byte("A"))
 			targetRoot := bytesutil.ToBytes32([]byte("B"))
@@ -288,14 +282,12 @@ func TestAttestToBlockHead_AttestsCorrectly(t *testing.T) {
 			committee := []primitives.ValidatorIndex{0, 3, 4, 2, validatorIndex, 6, 8, 9, 10}
 			var pubKey [fieldparams.BLSPubkeyLength]byte
 			copy(pubKey[:], validatorKey.PublicKey().Marshal())
-			validator.duties = &ethpb.ValidatorDutiesContainer{CurrentEpochDuties: []*ethpb.ValidatorDuty{
-				{
-					PublicKey:       validatorKey.PublicKey().Marshal(),
-					CommitteeIndex:  5,
-					CommitteeLength: uint64(len(committee)),
-					ValidatorIndex:  validatorIndex,
-				},
-			}}
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey:       validatorKey.PublicKey().Marshal(),
+				CommitteeIndex:  5,
+				CommitteeLength: uint64(len(committee)),
+				ValidatorIndex:  validatorIndex,
+			})
 
 			beaconBlockRoot := bytesutil.ToBytes32([]byte("A"))
 			targetRoot := bytesutil.ToBytes32([]byte("B"))
@@ -368,14 +360,12 @@ func TestAttestToBlockHead_BlocksDoubleAtt(t *testing.T) {
 			committee := []primitives.ValidatorIndex{0, 3, 4, 2, validatorIndex, 6, 8, 9, 10}
 			var pubKey [fieldparams.BLSPubkeyLength]byte
 			copy(pubKey[:], validatorKey.PublicKey().Marshal())
-			validator.duties = &ethpb.ValidatorDutiesContainer{CurrentEpochDuties: []*ethpb.ValidatorDuty{
-				{
-					PublicKey:       validatorKey.PublicKey().Marshal(),
-					CommitteeIndex:  5,
-					CommitteeLength: uint64(len(committee)),
-					ValidatorIndex:  validatorIndex,
-				},
-			}}
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey:       validatorKey.PublicKey().Marshal(),
+				CommitteeIndex:  5,
+				CommitteeLength: uint64(len(committee)),
+				ValidatorIndex:  validatorIndex,
+			})
 			beaconBlockRoot := bytesutil.ToBytes32([]byte("A"))
 			targetRoot := bytesutil.ToBytes32([]byte("B"))
 			sourceRoot := bytesutil.ToBytes32([]byte("C"))
@@ -424,14 +414,12 @@ func TestAttestToBlockHead_BlocksSurroundAtt(t *testing.T) {
 			committee := []primitives.ValidatorIndex{0, 3, 4, 2, validatorIndex, 6, 8, 9, 10}
 			var pubKey [fieldparams.BLSPubkeyLength]byte
 			copy(pubKey[:], validatorKey.PublicKey().Marshal())
-			validator.duties = &ethpb.ValidatorDutiesContainer{CurrentEpochDuties: []*ethpb.ValidatorDuty{
-				{
-					PublicKey:       validatorKey.PublicKey().Marshal(),
-					CommitteeIndex:  5,
-					CommitteeLength: uint64(len(committee)),
-					ValidatorIndex:  validatorIndex,
-				},
-			}}
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey:       validatorKey.PublicKey().Marshal(),
+				CommitteeIndex:  5,
+				CommitteeLength: uint64(len(committee)),
+				ValidatorIndex:  validatorIndex,
+			})
 			beaconBlockRoot := bytesutil.ToBytes32([]byte("A"))
 			targetRoot := bytesutil.ToBytes32([]byte("B"))
 			sourceRoot := bytesutil.ToBytes32([]byte("C"))
@@ -480,14 +468,12 @@ func TestAttestToBlockHead_BlocksSurroundedAtt(t *testing.T) {
 			var pubKey [fieldparams.BLSPubkeyLength]byte
 			copy(pubKey[:], validatorKey.PublicKey().Marshal())
 			committee := []primitives.ValidatorIndex{0, 3, 4, 2, validatorIndex, 6, 8, 9, 10}
-			validator.duties = &ethpb.ValidatorDutiesContainer{CurrentEpochDuties: []*ethpb.ValidatorDuty{
-				{
-					PublicKey:       validatorKey.PublicKey().Marshal(),
-					CommitteeIndex:  5,
-					CommitteeLength: uint64(len(committee)),
-					ValidatorIndex:  validatorIndex,
-				},
-			}}
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey:       validatorKey.PublicKey().Marshal(),
+				CommitteeIndex:  5,
+				CommitteeLength: uint64(len(committee)),
+				ValidatorIndex:  validatorIndex,
+			})
 			beaconBlockRoot := bytesutil.ToBytes32([]byte("A"))
 			targetRoot := bytesutil.ToBytes32([]byte("B"))
 			sourceRoot := bytesutil.ToBytes32([]byte("C"))
@@ -575,13 +561,12 @@ func TestAttestToBlockHead_DoesAttestAfterDelay(t *testing.T) {
 			committee := []primitives.ValidatorIndex{0, 3, 4, 2, validatorIndex, 6, 8, 9, 10}
 			var pubKey [fieldparams.BLSPubkeyLength]byte
 			copy(pubKey[:], validatorKey.PublicKey().Marshal())
-			validator.duties = &ethpb.ValidatorDutiesContainer{CurrentEpochDuties: []*ethpb.ValidatorDuty{
-				{
-					PublicKey:       validatorKey.PublicKey().Marshal(),
-					CommitteeIndex:  5,
-					CommitteeLength: uint64(len(committee)),
-					ValidatorIndex:  validatorIndex,
-				}}}
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey:       validatorKey.PublicKey().Marshal(),
+				CommitteeIndex:  5,
+				CommitteeLength: uint64(len(committee)),
+				ValidatorIndex:  validatorIndex,
+			})
 
 			m.validatorClient.EXPECT().AttestationData(
 				gomock.Any(), // ctx
@@ -590,7 +575,7 @@ func TestAttestToBlockHead_DoesAttestAfterDelay(t *testing.T) {
 				BeaconBlockRoot: bytesutil.PadTo([]byte("A"), 32),
 				Target:          &ethpb.Checkpoint{Root: bytesutil.PadTo([]byte("B"), 32)},
 				Source:          &ethpb.Checkpoint{Root: bytesutil.PadTo([]byte("C"), 32), Epoch: 3},
-			}, nil).Do(func(arg0, arg1 interface{}) {
+			}, nil).Do(func(arg0, arg1 any) {
 				wg.Done()
 			})
 
@@ -618,13 +603,12 @@ func TestAttestToBlockHead_CorrectBitfieldLength(t *testing.T) {
 			committee := []primitives.ValidatorIndex{0, 3, 4, 2, validatorIndex, 6, 8, 9, 10}
 			var pubKey [fieldparams.BLSPubkeyLength]byte
 			copy(pubKey[:], validatorKey.PublicKey().Marshal())
-			validator.duties = &ethpb.ValidatorDutiesContainer{CurrentEpochDuties: []*ethpb.ValidatorDuty{
-				{
-					PublicKey:       validatorKey.PublicKey().Marshal(),
-					CommitteeIndex:  5,
-					CommitteeLength: uint64(len(committee)),
-					ValidatorIndex:  validatorIndex,
-				}}}
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey:       validatorKey.PublicKey().Marshal(),
+				CommitteeIndex:  5,
+				CommitteeLength: uint64(len(committee)),
+				ValidatorIndex:  validatorIndex,
+			})
 			m.validatorClient.EXPECT().AttestationData(
 				gomock.Any(), // ctx
 				gomock.AssignableToTypeOf(&ethpb.AttestationDataRequest{}),
@@ -706,7 +690,7 @@ func TestServer_WaitToSlotOneThird_CanWait(t *testing.T) {
 
 	timeToSleep := params.BeaconConfig().SecondsPerSlot / 3
 	oneThird := currentTime.Add(time.Duration(timeToSleep) * time.Second)
-	v.waitOneThirdOrValidBlock(t.Context(), currentSlot)
+	v.waitUntilAttestationDueOrValidBlock(t.Context(), currentSlot)
 
 	if oneThird.Sub(time.Now()) > 10*time.Millisecond { // Allow for small diff due to execution time.
 		t.Errorf("Wanted %s time for slot one third but got %s", oneThird, currentTime)
@@ -724,7 +708,7 @@ func TestServer_WaitToSlotOneThird_SameReqSlot(t *testing.T) {
 		highestValidSlot: currentSlot,
 	}
 
-	v.waitOneThirdOrValidBlock(t.Context(), currentSlot)
+	v.waitUntilAttestationDueOrValidBlock(t.Context(), currentSlot)
 
 	if currentTime.Sub(time.Now()) > 10*time.Millisecond { // Allow for small diff due to execution time.
 		t.Errorf("Wanted %s time for slot one third but got %s", time.Now(), currentTime)
@@ -745,14 +729,12 @@ func TestServer_WaitToSlotOneThird_ReceiveBlockSlot(t *testing.T) {
 	}
 
 	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		time.Sleep(100 * time.Millisecond)
 		v.slotFeed.Send(currentSlot)
-		wg.Done()
-	}()
+	})
 
-	v.waitOneThirdOrValidBlock(t.Context(), currentSlot)
+	v.waitUntilAttestationDueOrValidBlock(t.Context(), currentSlot)
 
 	if currentTime.Sub(time.Now()) > 10*time.Millisecond { // Allow for small diff due to execution time.
 		t.Errorf("Wanted %s time for slot one third but got %s", time.Now(), currentTime)

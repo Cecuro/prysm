@@ -5,19 +5,20 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/transition"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	state_native "github.com/OffchainLabs/prysm/v6/beacon-chain/state/state-native"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/transition"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	state_native "github.com/OffchainLabs/prysm/v7/beacon-chain/state/state-native"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 )
@@ -42,7 +43,7 @@ func Test_diffToState(t *testing.T) {
 
 func Test_kmpIndex(t *testing.T) {
 	intSlice := make([]*int, 10)
-	for i := 0; i < len(intSlice); i++ {
+	for i := range intSlice {
 		intSlice[i] = new(int)
 		*intSlice[i] = i
 	}
@@ -507,6 +508,73 @@ func Test_applyValidatorDiff(t *testing.T) {
 	}
 }
 
+// TestApplyDiff_WithSignificantValidatorGrowth reproduces a bug where a Diff created from a
+// source with N validators to a target with >2N validators (all existing changed + many new)
+// fails on ApplyDiff. This is the mainnet scenario: genesis has ~21k validators, and by slot
+// 131072 all have EffectiveBalance changes and ~6.5k new ones activated.
+func TestApplyDiff_WithSignificantValidatorGrowth(t *testing.T) {
+	numSource := uint64(32)
+	numNew := uint64(48)
+	source, _ := util.DeterministicGenesisStateElectra(t, numSource)
+	target := source.Copy()
+
+	vals := target.Validators()
+	for i := range vals {
+		vals[i] = &ethpb.Validator{
+			PublicKey:                  vals[i].PublicKey,
+			WithdrawalCredentials:      vals[i].WithdrawalCredentials,
+			EffectiveBalance:           vals[i].EffectiveBalance + 1000,
+			Slashed:                    vals[i].Slashed,
+			ActivationEligibilityEpoch: vals[i].ActivationEligibilityEpoch,
+			ActivationEpoch:            vals[i].ActivationEpoch,
+			ExitEpoch:                  vals[i].ExitEpoch,
+			WithdrawableEpoch:          vals[i].WithdrawableEpoch,
+		}
+	}
+	for i := range numNew {
+		pubkey := make([]byte, fieldparams.BLSPubkeyLength)
+		binary.LittleEndian.PutUint64(pubkey, 1000+i)
+		wc := make([]byte, 32)
+		binary.LittleEndian.PutUint64(wc, 2000+i)
+		vals = append(vals, &ethpb.Validator{
+			PublicKey:                  pubkey,
+			WithdrawalCredentials:      wc,
+			EffectiveBalance:           32000000000,
+			Slashed:                    false,
+			ActivationEligibilityEpoch: primitives.Epoch(i),
+			ActivationEpoch:            primitives.Epoch(i + 1),
+			ExitEpoch:                  math.MaxUint64,
+			WithdrawableEpoch:          math.MaxUint64,
+		})
+	}
+	require.NoError(t, target.SetValidators(vals))
+
+	bals := target.Balances()
+	for range numNew {
+		bals = append(bals, 32000000000)
+	}
+	require.NoError(t, target.SetBalances(bals))
+	require.NoError(t, target.SetSlot(source.Slot()+1))
+
+	diffBytes, err := Diff(source, target)
+	require.NoError(t, err)
+
+	result, err := ApplyDiff(t.Context(), source.Copy(), diffBytes)
+	require.NoError(t, err, "ApplyDiff should handle diffs with significant validator growth")
+
+	resultVals := result.Validators()
+	targetVals := target.Validators()
+	require.Equal(t, len(targetVals), len(resultVals))
+	for i, val := range resultVals {
+		require.DeepEqual(t, targetVals[i].PublicKey, val.PublicKey)
+		require.Equal(t, targetVals[i].EffectiveBalance, val.EffectiveBalance)
+		require.Equal(t, targetVals[i].Slashed, val.Slashed)
+		require.Equal(t, targetVals[i].ActivationEpoch, val.ActivationEpoch)
+		require.Equal(t, targetVals[i].ExitEpoch, val.ExitEpoch)
+		require.Equal(t, targetVals[i].WithdrawableEpoch, val.WithdrawableEpoch)
+	}
+}
+
 // Test_diffToBalances tests balance diff computation
 func Test_diffToBalances(t *testing.T) {
 	source, _ := util.DeterministicGenesisStateElectra(t, 32)
@@ -544,7 +612,7 @@ func Test_diffToBalances(t *testing.T) {
 		}
 
 		targetBals := target.Balances()
-		for i := 0; i < len(sourceBals); i++ {
+		for i := range sourceBals {
 			require.Equal(t, targetBals[i], sourceBals[i], "balance mismatch at index %d", i)
 		}
 	})
@@ -665,7 +733,7 @@ func Test_applyStateDiff(t *testing.T) {
 // Test_computeLPS tests the LPS array computation for KMP algorithm
 func Test_computeLPS(t *testing.T) {
 	intSlice := make([]*int, 10)
-	for i := 0; i < len(intSlice); i++ {
+	for i := range intSlice {
 		intSlice[i] = new(int)
 		*intSlice[i] = i
 	}
@@ -955,8 +1023,7 @@ func BenchmarkGetDiff(b *testing.B) {
 	source, target, err := getMainnetStates()
 	require.NoError(b, err)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		hdiff, err := Diff(source, target)
 		b.Log("Diff size:", len(hdiff.StateDiff)+len(hdiff.BalancesDiff)+len(hdiff.ValidatorDiffs))
 		require.NoError(b, err)
@@ -971,8 +1038,8 @@ func BenchmarkApplyDiff(b *testing.B) {
 	require.NoError(b, err)
 	hdiff, err := Diff(source, target)
 	require.NoError(b, err)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		source, err = ApplyDiff(b.Context(), source, hdiff)
 		require.NoError(b, err)
 	}
@@ -998,7 +1065,7 @@ func BenchmarkDiffCreation(b *testing.B) {
 			_ = target.SetValidators(validators)
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := Diff(source, target)
 				if err != nil {
 					b.Fatal(err)
@@ -1026,7 +1093,7 @@ func BenchmarkDiffApplication(b *testing.B) {
 			}
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				// Need fresh source for each iteration
 				freshSource := source.Copy()
 				_, err := ApplyDiff(ctx, freshSource, diff)
@@ -1049,8 +1116,7 @@ func BenchmarkSerialization(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = hdiff.serialize()
 	}
 }
@@ -1067,8 +1133,7 @@ func BenchmarkDeserialization(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := newHdiff(diff)
 		if err != nil {
 			b.Fatal(err)
@@ -1093,7 +1158,7 @@ func BenchmarkBalanceDiff(b *testing.B) {
 			_ = target.SetBalances(balances)
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := diffToBalances(source, target)
 				if err != nil {
 					b.Fatal(err)
@@ -1123,7 +1188,7 @@ func BenchmarkValidatorDiff(b *testing.B) {
 			_ = target.SetValidators(validators)
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := diffToVals(source, target)
 				if err != nil {
 					b.Fatal(err)
@@ -1172,7 +1237,7 @@ func BenchmarkKMPAlgorithm(b *testing.B) {
 				}
 
 				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
+				for b.Loop() {
 					_ = kmpIndex(len(pattern), text, intEquals)
 				}
 			})
@@ -1201,7 +1266,7 @@ func BenchmarkCompressionRatio(b *testing.B) {
 			name: "balance_changes",
 			modifier: func(target state.BeaconState) {
 				balances := target.Balances()
-				for i := 0; i < 10; i++ {
+				for i := range 10 {
 					if i < len(balances) {
 						balances[i] += 1000
 					}
@@ -1213,7 +1278,7 @@ func BenchmarkCompressionRatio(b *testing.B) {
 			name: "validator_changes",
 			modifier: func(target state.BeaconState) {
 				validators := target.Validators()
-				for i := 0; i < 10; i++ {
+				for i := range 10 {
 					if i < len(validators) {
 						validators[i].EffectiveBalance += 1000
 					}
@@ -1235,7 +1300,7 @@ func BenchmarkCompressionRatio(b *testing.B) {
 			}
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				diff, err := Diff(source, testTarget)
 				if err != nil {
 					b.Fatal(err)
@@ -1262,7 +1327,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 
 	// Modify some data
 	validators := target.Validators()
-	for i := 0; i < 25; i++ {
+	for i := range 25 {
 		if i < len(validators) {
 			validators[i].EffectiveBalance += 1000
 		}
@@ -1270,9 +1335,8 @@ func BenchmarkMemoryUsage(b *testing.B) {
 	_ = target.SetValidators(validators)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		diff, err := Diff(source, target)
 		if err != nil {
 			b.Fatal(err)

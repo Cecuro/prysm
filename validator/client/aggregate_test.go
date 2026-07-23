@@ -8,16 +8,15 @@ import (
 	"time"
 
 	"github.com/OffchainLabs/go-bitfield"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/crypto/bls"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
-	"github.com/OffchainLabs/prysm/v6/validator/client/iface"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/crypto/bls"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
+	"github.com/OffchainLabs/prysm/v7/validator/client/iface"
 	logTest "github.com/sirupsen/logrus/hooks/test"
 	"go.uber.org/mock/gomock"
 )
@@ -27,7 +26,7 @@ func TestSubmitAggregateAndProof_GetDutiesRequestFailure(t *testing.T) {
 		t.Run(fmt.Sprintf("SlashingProtectionMinimal:%v", isSlashingProtectionMinimal), func(t *testing.T) {
 			hook := logTest.NewGlobal()
 			validator, _, validatorKey, finish := setup(t, isSlashingProtectionMinimal)
-			validator.duties = &ethpb.ValidatorDutiesContainer{CurrentEpochDuties: []*ethpb.ValidatorDuty{}}
+			validator.duties = testDutyStore()
 			defer finish()
 
 			var pubKey [fieldparams.BLSPubkeyLength]byte
@@ -46,13 +45,9 @@ func TestSubmitAggregateAndProof_SignFails(t *testing.T) {
 			defer finish()
 			var pubKey [fieldparams.BLSPubkeyLength]byte
 			copy(pubKey[:], validatorKey.PublicKey().Marshal())
-			validator.duties = &ethpb.ValidatorDutiesContainer{
-				CurrentEpochDuties: []*ethpb.ValidatorDuty{
-					{
-						PublicKey: validatorKey.PublicKey().Marshal(),
-					},
-				},
-			}
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey: validatorKey.PublicKey().Marshal(),
+			})
 
 			m.validatorClient.EXPECT().DomainData(
 				gomock.Any(), // ctx
@@ -91,13 +86,9 @@ func TestSubmitAggregateAndProof_Ok(t *testing.T) {
 			defer finish()
 			var pubKey [fieldparams.BLSPubkeyLength]byte
 			copy(pubKey[:], validatorKey.PublicKey().Marshal())
-			validator.duties = &ethpb.ValidatorDutiesContainer{
-				CurrentEpochDuties: []*ethpb.ValidatorDuty{
-					{
-						PublicKey: validatorKey.PublicKey().Marshal(),
-					},
-				},
-			}
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey: validatorKey.PublicKey().Marshal(),
+			})
 
 			m.validatorClient.EXPECT().DomainData(
 				gomock.Any(), // ctx
@@ -144,13 +135,9 @@ func TestSubmitAggregateAndProof_Ok(t *testing.T) {
 			defer finish()
 			var pubKey [fieldparams.BLSPubkeyLength]byte
 			copy(pubKey[:], validatorKey.PublicKey().Marshal())
-			validator.duties = &ethpb.ValidatorDutiesContainer{
-				CurrentEpochDuties: []*ethpb.ValidatorDuty{
-					{
-						PublicKey: validatorKey.PublicKey().Marshal(),
-					},
-				},
-			}
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey: validatorKey.PublicKey().Marshal(),
+			})
 
 			m.validatorClient.EXPECT().DomainData(
 				gomock.Any(), // ctx
@@ -198,26 +185,25 @@ func TestSubmitAggregateAndProof_Distributed(t *testing.T) {
 
 			var pubKey [fieldparams.BLSPubkeyLength]byte
 			copy(pubKey[:], validatorKey.PublicKey().Marshal())
-			validator.duties = &ethpb.ValidatorDutiesContainer{
-				CurrentEpochDuties: []*ethpb.ValidatorDuty{
-					{
-						PublicKey:      validatorKey.PublicKey().Marshal(),
-						ValidatorIndex: validatorIdx,
-						AttesterSlot:   slot,
-					},
+			validator.duties = testDutyStore(&ethpb.ValidatorDuty{
+				PublicKey:      validatorKey.PublicKey().Marshal(),
+				ValidatorIndex: validatorIdx,
+				AttesterSlot:   slot,
+			})
+
+			validator.pubkeyToStatus[pubKey] = &validatorStatus{
+				publicKey: validatorKey.PublicKey().Marshal(),
+				index:     validatorIdx,
+			}
+			dvProvider := newDistributedSelector(validator)
+			dvProvider.attSelections = map[attSelectionKey]iface.BeaconCommitteeSelection{
+				{slot: slot, index: 123}: {
+					SelectionProof: make([]byte, 96),
+					Slot:           slot,
+					ValidatorIndex: validatorIdx,
 				},
 			}
-
-			validator.distributed = true
-			validator.attSelections = make(map[attSelectionKey]iface.BeaconCommitteeSelection)
-			validator.attSelections[attSelectionKey{
-				slot:  slot,
-				index: 123,
-			}] = iface.BeaconCommitteeSelection{
-				SelectionProof: make([]byte, 96),
-				Slot:           slot,
-				ValidatorIndex: validatorIdx,
-			}
+			validator.aggSelector = dvProvider
 
 			m.validatorClient.EXPECT().SubmitAggregateSelectionProof(
 				gomock.Any(), // ctx
@@ -256,12 +242,12 @@ func TestWaitForSlotTwoThird_WaitCorrectly(t *testing.T) {
 			defer finish()
 			currentTime := time.Now()
 			numOfSlots := primitives.Slot(4)
-			validator.genesisTime = currentTime.Add(-1 * time.Duration(numOfSlots.Mul(params.BeaconConfig().SecondsPerSlot)) * time.Second)
-			oneThird := slots.DivideSlotBy(3 /* one third of slot duration */)
-			timeToSleep := oneThird + oneThird
+			slotDuration := params.BeaconConfig().SlotDuration()
+			validator.genesisTime = currentTime.Add(-slotDuration * time.Duration(numOfSlots))
+			timeToSleep := params.BeaconConfig().SlotComponentDuration(params.BeaconConfig().AggregateDueBPS)
 
 			twoThirdTime := currentTime.Add(timeToSleep)
-			validator.waitToSlotTwoThirds(t.Context(), numOfSlots)
+			validator.waitUntilAggregateDue(t.Context(), numOfSlots)
 			currentTime = time.Now()
 			assert.Equal(t, twoThirdTime.Unix(), currentTime.Unix())
 		})
@@ -275,12 +261,13 @@ func TestWaitForSlotTwoThird_DoneContext_ReturnsImmediately(t *testing.T) {
 			defer finish()
 			currentTime := time.Now()
 			numOfSlots := primitives.Slot(4)
-			validator.genesisTime = currentTime.Add(-1 * time.Duration(numOfSlots.Mul(params.BeaconConfig().SecondsPerSlot)) * time.Second)
+			slotDuration := params.BeaconConfig().SlotDuration()
+			validator.genesisTime = currentTime.Add(-slotDuration * time.Duration(numOfSlots))
 
 			expectedTime := time.Now()
 			ctx, cancel := context.WithCancel(t.Context())
 			cancel()
-			validator.waitToSlotTwoThirds(ctx, numOfSlots)
+			validator.waitUntilAggregateDue(ctx, numOfSlots)
 			currentTime = time.Now()
 			assert.Equal(t, expectedTime.Unix(), currentTime.Unix())
 		})

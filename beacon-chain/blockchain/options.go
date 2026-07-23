@@ -3,23 +3,23 @@ package blockchain
 import (
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/async/event"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/cache"
-	statefeed "github.com/OffchainLabs/prysm/v6/beacon-chain/core/feed/state"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/db"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/db/filesystem"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/execution"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/forkchoice"
-	lightclient "github.com/OffchainLabs/prysm/v6/beacon-chain/light-client"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/operations/attestations"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/operations/blstoexec"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/operations/slashings"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/operations/voluntaryexits"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/p2p"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/startup"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state/stategen"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/async/event"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/cache"
+	statefeed "github.com/OffchainLabs/prysm/v7/beacon-chain/core/feed/state"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/db"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/db/filesystem"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/execution"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/forkchoice"
+	lightclient "github.com/OffchainLabs/prysm/v7/beacon-chain/light-client"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/operations/attestations"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/operations/blstoexec"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/operations/slashings"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/operations/voluntaryexits"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/startup"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state/stategen"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 )
 
 type Option func(s *Service) error
@@ -88,10 +88,20 @@ func WithPayloadIDCache(c *cache.PayloadIDCache) Option {
 	}
 }
 
-// WithTrackedValidatorsCache for tracked validators cache.
-func WithTrackedValidatorsCache(c *cache.TrackedValidatorsCache) Option {
+// WithProposerPreferencesCache sets the proposer preferences cache used to
+// look up fee recipient and gas limit from Gloas gossip preferences.
+func WithProposerPreferencesCache(c *cache.ProposerPreferencesCache) Option {
 	return func(s *Service) error {
-		s.cfg.TrackedValidatorsCache = c
+		s.cfg.ProposerPreferencesCache = c
+		return nil
+	}
+}
+
+// WithSubscribedValidatorsCache sets the cache of validator indices attached
+// to this BN, populated from beacon_committee_subscriptions.
+func WithSubscribedValidatorsCache(c *cache.SubscribedValidatorsCache) Option {
+	return func(s *Service) error {
+		s.cfg.SubscribedValidatorsCache = c
 		return nil
 	}
 }
@@ -100,6 +110,14 @@ func WithTrackedValidatorsCache(c *cache.TrackedValidatorsCache) Option {
 func WithAttestationCache(c *cache.AttestationCache) Option {
 	return func(s *Service) error {
 		s.cfg.AttestationCache = c
+		return nil
+	}
+}
+
+// WithAttestationDataCache for attestation data cache.
+func WithAttestationDataCache(c *cache.AttestationDataCache) Option {
+	return func(s *Service) error {
+		s.cfg.AttestationDataCache = c
 		return nil
 	}
 }

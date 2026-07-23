@@ -9,19 +9,20 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/async/event"
-	"github.com/OffchainLabs/prysm/v6/config/features"
-	"github.com/OffchainLabs/prysm/v6/crypto/bls"
-	"github.com/OffchainLabs/prysm/v6/crypto/rand"
-	"github.com/OffchainLabs/prysm/v6/io/file"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/validator/accounts"
-	"github.com/OffchainLabs/prysm/v6/validator/accounts/iface"
-	"github.com/OffchainLabs/prysm/v6/validator/accounts/wallet"
-	"github.com/OffchainLabs/prysm/v6/validator/client"
-	"github.com/OffchainLabs/prysm/v6/validator/client/testutil"
-	"github.com/OffchainLabs/prysm/v6/validator/keymanager"
+	"github.com/OffchainLabs/prysm/v7/async/event"
+	"github.com/OffchainLabs/prysm/v7/config/features"
+	"github.com/OffchainLabs/prysm/v7/crypto/bls"
+	"github.com/OffchainLabs/prysm/v7/crypto/rand"
+	"github.com/OffchainLabs/prysm/v7/io/file"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/validator/accounts"
+	"github.com/OffchainLabs/prysm/v7/validator/accounts/iface"
+	"github.com/OffchainLabs/prysm/v7/validator/accounts/wallet"
+	"github.com/OffchainLabs/prysm/v7/validator/client"
+	"github.com/OffchainLabs/prysm/v7/validator/client/testutil"
+	"github.com/OffchainLabs/prysm/v7/validator/keymanager"
+	validatorTesting "github.com/OffchainLabs/prysm/v7/validator/testing"
 	"github.com/google/uuid"
 	"github.com/tyler-smith/go-bip39"
 	keystorev4 "github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4"
@@ -46,6 +47,7 @@ func TestServer_CreateWallet_Local(t *testing.T) {
 	km, err := w.InitializeKeymanager(ctx, iface.InitKeymanagerConfig{ListenForChanges: false})
 	require.NoError(t, err)
 	vs, err := client.NewValidatorService(ctx, &client.Config{
+		Conn:   validatorTesting.MockNodeConnection(),
 		Wallet: w,
 		Validator: &testutil.FakeValidator{
 			Km: km,
@@ -74,7 +76,7 @@ func TestServer_CreateWallet_Local(t *testing.T) {
 	encryptor := keystorev4.New()
 	keystores := make([]string, 3)
 	passwords := make([]string, 3)
-	for i := 0; i < len(keystores); i++ {
+	for i := range keystores {
 		privKey, err := bls.RandKey()
 		require.NoError(t, err)
 		pubKey := fmt.Sprintf("%x", privKey.PublicKey().Marshal())
@@ -443,6 +445,7 @@ func TestServer_WalletConfig(t *testing.T) {
 	require.NoError(t, err)
 	s.wallet = w
 	vs, err := client.NewValidatorService(ctx, &client.Config{
+		Conn:   validatorTesting.MockNodeConnection(),
 		Wallet: w,
 		Validator: &testutil.FakeValidator{
 			Km: km,

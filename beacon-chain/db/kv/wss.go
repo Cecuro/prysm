@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/encoding/ssz/detect"
-	"github.com/OffchainLabs/prysm/v6/proto/dbval"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/config/features"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/encoding/ssz/detect"
+	"github.com/OffchainLabs/prysm/v7/proto/dbval"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -68,9 +69,16 @@ func (s *Store) SaveOrigin(ctx context.Context, serState, serBlock []byte) error
 		return errors.Wrap(err, "save block")
 	}
 
-	// save state
-	if err = s.SaveState(ctx, state, blockRoot); err != nil {
-		return errors.Wrap(err, "save state")
+	if features.Get().EnableStateDiff {
+		// initializeStateDiff will save the state, so we don't need to call SaveState here
+		if err := s.initializeStateDiff(state.Slot(), state); err != nil {
+			return errors.Wrap(err, "failed to initialize state diff")
+		}
+	} else {
+		// save state
+		if err = s.SaveState(ctx, state, blockRoot); err != nil {
+			return errors.Wrap(err, "save state")
+		}
 	}
 
 	if err = s.SaveStateSummary(ctx, &ethpb.StateSummary{
@@ -110,6 +118,5 @@ func (s *Store) SaveOrigin(ctx context.Context, serState, serBlock []byte) error
 	if err = s.SaveFinalizedCheckpoint(ctx, chkpt); err != nil {
 		return errors.Wrap(err, "save finalized checkpoint")
 	}
-
 	return nil
 }

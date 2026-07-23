@@ -7,14 +7,14 @@ import (
 	"sync"
 	"time"
 
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/monitoring/tracing"
-	"github.com/OffchainLabs/prysm/v6/monitoring/tracing/trace"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1/slashings"
-	"github.com/OffchainLabs/prysm/v6/validator/db/common"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/monitoring/tracing"
+	"github.com/OffchainLabs/prysm/v7/monitoring/tracing/trace"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1/slashings"
+	"github.com/OffchainLabs/prysm/v7/validator/db/common"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	bolt "go.etcd.io/bbolt"
@@ -425,7 +425,7 @@ func (s *Store) batchAttestationWrites(ctx context.Context) {
 				log.WithField("recordCount", numRecords).Debug(
 					"Reached max capacity of batched attestation records, flushing to DB",
 				)
-				if s.batchedAttestationsFlushInProgress.IsNotSet() {
+				if !s.batchedAttestationsFlushInProgress.Load() {
 					// Create a new context with the span information from the chan. This is to
 					// prevent any context deadlines from the caller while maintaining the trace
 					// relationships.
@@ -439,7 +439,7 @@ func (s *Store) batchAttestationWrites(ctx context.Context) {
 				log.WithField("recordCount", numRecords).Debug(
 					"Batched attestation records write interval reached, flushing to DB",
 				)
-				if s.batchedAttestationsFlushInProgress.IsNotSet() {
+				if !s.batchedAttestationsFlushInProgress.Load() {
 					s.flushAttestationRecords(ctx, s.batchedAttestations.Flush())
 				}
 			}
@@ -457,14 +457,14 @@ func (s *Store) flushAttestationRecords(ctx context.Context, records []*common.A
 	ctx, span := trace.StartSpan(ctx, "validatorDB.flushAttestationRecords")
 	defer span.End()
 
-	if s.batchedAttestationsFlushInProgress.IsSet() {
+	if s.batchedAttestationsFlushInProgress.Load() {
 		// This should never happen. This method should not be called when a flush is already in
 		// progress. If you are seeing this log, check the atomic bool before calling this method.
 		log.Error("Attempted to flush attestation records when already in progress")
 		return
 	}
-	s.batchedAttestationsFlushInProgress.Set()
-	defer s.batchedAttestationsFlushInProgress.UnSet()
+	s.batchedAttestationsFlushInProgress.Store(true)
+	defer s.batchedAttestationsFlushInProgress.Store(false)
 
 	start := time.Now()
 	err := s.saveAttestationRecords(ctx, records)

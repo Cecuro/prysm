@@ -3,16 +3,16 @@ package transition
 import (
 	"context"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/altair"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/helpers"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	state_native "github.com/OffchainLabs/prysm/v6/beacon-chain/state/state-native"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state/stateutil"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	enginev1 "github.com/OffchainLabs/prysm/v6/proto/engine/v1"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/altair"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	state_native "github.com/OffchainLabs/prysm/v7/beacon-chain/state/state-native"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state/stateutil"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	enginev1 "github.com/OffchainLabs/prysm/v7/proto/engine/v1"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 	"github.com/pkg/errors"
 )
 
@@ -95,7 +95,7 @@ func OptimizedGenesisBeaconStateBellatrix(genesisTime uint64, preState state.Bea
 	}
 
 	randaoMixes := make([][]byte, params.BeaconConfig().EpochsPerHistoricalVector)
-	for i := 0; i < len(randaoMixes); i++ {
+	for i := range randaoMixes {
 		h := make([]byte, 32)
 		copy(h, eth1Data.BlockHash)
 		randaoMixes[i] = h
@@ -104,23 +104,24 @@ func OptimizedGenesisBeaconStateBellatrix(genesisTime uint64, preState state.Bea
 	zeroHash := params.BeaconConfig().ZeroHash[:]
 
 	activeIndexRoots := make([][]byte, params.BeaconConfig().EpochsPerHistoricalVector)
-	for i := 0; i < len(activeIndexRoots); i++ {
+	for i := range activeIndexRoots {
 		activeIndexRoots[i] = zeroHash
 	}
 
 	blockRoots := make([][]byte, params.BeaconConfig().SlotsPerHistoricalRoot)
-	for i := 0; i < len(blockRoots); i++ {
+	for i := range blockRoots {
 		blockRoots[i] = zeroHash
 	}
 
 	stateRoots := make([][]byte, params.BeaconConfig().SlotsPerHistoricalRoot)
-	for i := 0; i < len(stateRoots); i++ {
+	for i := range stateRoots {
 		stateRoots[i] = zeroHash
 	}
 
 	slashings := make([]uint64, params.BeaconConfig().EpochsPerSlashingsVector)
 
-	genesisValidatorsRoot, err := stateutil.ValidatorRegistryRoot(preState.Validators())
+	compactValidators := stateutil.CompactValidatorsFromProto(preState.Validators())
+	genesisValidatorsRoot, err := stateutil.ValidatorRegistryRoot(compactValidators)
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not hash tree root genesis validators %v", err)
 	}
@@ -131,7 +132,7 @@ func OptimizedGenesisBeaconStateBellatrix(genesisTime uint64, preState state.Bea
 	}
 	scoresMissing := len(preState.Validators()) - len(scores)
 	if scoresMissing > 0 {
-		for i := 0; i < scoresMissing; i++ {
+		for range scoresMissing {
 			scores = append(scores, 0)
 		}
 	}
@@ -224,7 +225,7 @@ func OptimizedGenesisBeaconStateBellatrix(genesisTime uint64, preState state.Bea
 		BodyRoot:   bodyRoot[:],
 	}
 
-	ist, err := state_native.InitializeFromProtoBellatrix(st)
+	ist, err := state_native.InitializeFromProtoUnsafeBellatrix(st)
 	if err != nil {
 		return nil, err
 	}
@@ -276,5 +277,5 @@ func EmptyGenesisStateBellatrix() (state.BeaconState, error) {
 		},
 	}
 
-	return state_native.InitializeFromProtoBellatrix(st)
+	return state_native.InitializeFromProtoUnsafeBellatrix(st)
 }

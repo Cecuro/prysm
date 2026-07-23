@@ -6,11 +6,11 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/OffchainLabs/prysm/v6/api/apiutil"
-	"github.com/OffchainLabs/prysm/v6/api/server/structs"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/helpers"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/api/apiutil"
+	"github.com/OffchainLabs/prysm/v7/api/server/structs"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/pkg/errors"
 )
@@ -129,7 +129,7 @@ func (c *beaconApiValidatorClient) aggregateAttestation(
 	endpoint := apiutil.BuildURL("/eth/v2/validator/aggregate_attestation", params)
 
 	var aggregateAttestationResponse structs.AggregateAttestationResponse
-	err := c.jsonRestHandler.Get(ctx, endpoint, &aggregateAttestationResponse)
+	err := c.handler.Get(ctx, endpoint, &aggregateAttestationResponse)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func (c *beaconApiValidatorClient) aggregateAttestationElectra(
 	endpoint := apiutil.BuildURL("/eth/v2/validator/aggregate_attestation", params)
 
 	var aggregateAttestationResponse structs.AggregateAttestationResponse
-	if err := c.jsonRestHandler.Get(ctx, endpoint, &aggregateAttestationResponse); err != nil {
+	if err := c.handler.Get(ctx, endpoint, &aggregateAttestationResponse); err != nil {
 		return nil, err
 	}
 

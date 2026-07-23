@@ -1,17 +1,18 @@
 package electra
 
 import (
+	"context"
 	"sort"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/helpers"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/time"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	state_native "github.com/OffchainLabs/prysm/v6/beacon-chain/state/state-native"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	enginev1 "github.com/OffchainLabs/prysm/v6/proto/engine/v1"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/time"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	state_native "github.com/OffchainLabs/prysm/v7/beacon-chain/state/state-native"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	enginev1 "github.com/OffchainLabs/prysm/v7/proto/engine/v1"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/pkg/errors"
 )
 
@@ -248,7 +249,7 @@ func ConvertToElectra(beaconState state.BeaconState) (state.BeaconState, error) 
 //	        queue_excess_active_balance(post, ValidatorIndex(index))
 //
 //	return post
-func UpgradeToElectra(beaconState state.BeaconState) (state.BeaconState, error) {
+func UpgradeToElectra(ctx context.Context, beaconState state.BeaconState) (state.BeaconState, error) {
 	s, err := ConvertToElectra(beaconState)
 	if err != nil {
 		return nil, err
@@ -258,26 +259,23 @@ func UpgradeToElectra(beaconState state.BeaconState) (state.BeaconState, error) 
 	earliestExitEpoch := helpers.ActivationExitEpoch(time.CurrentEpoch(beaconState))
 	preActivationIndices := make([]primitives.ValidatorIndex, 0)
 	compoundWithdrawalIndices := make([]primitives.ValidatorIndex, 0)
-	if err = beaconState.ReadFromEveryValidator(func(index int, val state.ReadOnlyValidator) error {
+	for index, val := range beaconState.ValidatorsReadOnlySeq() {
 		if val.ExitEpoch() != params.BeaconConfig().FarFutureEpoch && val.ExitEpoch() > earliestExitEpoch {
 			earliestExitEpoch = val.ExitEpoch()
 		}
 		if val.ActivationEpoch() == params.BeaconConfig().FarFutureEpoch {
-			preActivationIndices = append(preActivationIndices, primitives.ValidatorIndex(index))
+			preActivationIndices = append(preActivationIndices, index)
 		}
 		if val.HasCompoundingWithdrawalCredentials() {
-			compoundWithdrawalIndices = append(compoundWithdrawalIndices, primitives.ValidatorIndex(index))
+			compoundWithdrawalIndices = append(compoundWithdrawalIndices, index)
 		}
-		return nil
-	}); err != nil {
-		return nil, err
 	}
 
 	earliestExitEpoch++ // Increment to find the earliest possible exit epoch
 
 	// note: should be the same in prestate and post beaconState.
 	// we are deviating from the specs a bit as it calls for using the post beaconState
-	tab, err := helpers.TotalActiveBalance(beaconState)
+	tab, err := helpers.TotalActiveBalance(ctx, beaconState)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get total active balance")
 	}

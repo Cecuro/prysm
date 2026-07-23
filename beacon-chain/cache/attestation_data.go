@@ -4,15 +4,16 @@ import (
 	"errors"
 	"sync"
 
-	forkchoicetypes "github.com/OffchainLabs/prysm/v6/beacon-chain/forkchoice/types"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
+	forkchoicetypes "github.com/OffchainLabs/prysm/v7/beacon-chain/forkchoice/types"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
 )
 
 type AttestationConsensusData struct {
-	Slot     primitives.Slot
-	HeadRoot []byte
-	Target   forkchoicetypes.Checkpoint
-	Source   forkchoicetypes.Checkpoint
+	Slot          primitives.Slot
+	HeadRoot      []byte
+	Target        forkchoicetypes.Checkpoint
+	Source        forkchoicetypes.Checkpoint
+	IsPayloadFull bool
 }
 
 // AttestationDataCache stores cached results of AttestationData requests.
@@ -38,4 +39,12 @@ func (c *AttestationDataCache) Put(a *AttestationConsensusData) error {
 	}
 	c.a = a
 	return nil
+}
+
+// Clear evicts the cached response.
+func (c *AttestationDataCache) Clear() {
+	c.Lock()
+	defer c.Unlock()
+
+	c.a = nil
 }

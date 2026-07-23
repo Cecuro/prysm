@@ -3,14 +3,14 @@ package blockchain
 import (
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/blocks"
-	"github.com/OffchainLabs/prysm/v6/config/features"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	consensusblocks "github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/blocks"
+	"github.com/OffchainLabs/prysm/v7/config/features"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	consensusblocks "github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
 	logTest "github.com/sirupsen/logrus/hooks/test"
 )
 
@@ -104,7 +104,9 @@ func Test_setupForkchoiceTree_Head(t *testing.T) {
 	require.NoError(t, err)
 	root, err := b.Block.HashTreeRoot()
 	require.NoError(t, err)
-	preState, err := service.getBlockPreState(ctx, wsb.Block())
+	roblock, err := consensusblocks.NewROBlockWithRoot(wsb, root)
+	require.NoError(t, err)
+	preState, err := service.GetBlockPreState(ctx, roblock)
 	require.NoError(t, err)
 	postState, err := service.validateStateTransition(ctx, preState, wsb)
 	require.NoError(t, err)
@@ -125,4 +127,43 @@ func Test_setupForkchoiceTree_Head(t *testing.T) {
 	require.Equal(t, root, service.startupHeadRoot())
 	require.NoError(t, service.setupForkchoiceTree(st))
 	require.Equal(t, 3, service.cfg.ForkChoiceStore.NodeCount())
+}
+
+// Regression test: the justified checkpoint in the DB references a root whose
+// block is absent (BeaconDB.Block returns nil, nil for it). Startup must fall
+// back to the finalized block as head instead of panicking on the nil block.
+func Test_setupForkchoiceTree_MissingHeadBlock(t *testing.T) {
+	service, tr := minimalTestService(t)
+	ctx := tr.ctx
+	hook := logTest.NewGlobal()
+
+	st, _ := util.DeterministicGenesisState(t, 64)
+	stateRoot, err := st.HashTreeRoot(ctx)
+	require.NoError(t, err, "Could not hash genesis state")
+	require.NoError(t, service.saveGenesisData(ctx, st))
+
+	genesis := blocks.NewGenesisBlock(stateRoot[:])
+	wsb, err := consensusblocks.NewSignedBeaconBlock(genesis)
+	require.NoError(t, err)
+	require.NoError(t, service.cfg.BeaconDB.SaveBlock(ctx, wsb), "Could not save genesis block")
+	genesisRoot, err := genesis.Block.HashTreeRoot()
+	require.NoError(t, err, "Could not get signing root")
+	require.NoError(t, service.cfg.BeaconDB.SaveState(ctx, st, genesisRoot), "Could not save genesis state")
+
+	// The justified checkpoint points to a root whose state exists but whose
+	// block is not in the DB, e.g. left behind by an unclean stop.
+	missingRoot := [32]byte{'m', 'i', 's', 's', 'i', 'n', 'g'}
+	require.NoError(t, service.cfg.BeaconDB.SaveState(ctx, st, missingRoot), "Could not save state")
+	require.NoError(t, service.cfg.BeaconDB.SaveJustifiedCheckpoint(ctx, &ethpb.Checkpoint{Epoch: 1, Root: missingRoot[:]}))
+	require.NoError(t, service.cfg.BeaconDB.SaveFinalizedCheckpoint(ctx, &ethpb.Checkpoint{Root: genesisRoot[:]}))
+	require.NoError(t, service.setupForkchoiceCheckpoints())
+
+	blk, err := service.cfg.BeaconDB.Block(ctx, missingRoot)
+	require.NoError(t, err)
+	require.IsNil(t, blk)
+	require.Equal(t, missingRoot, service.startupHeadRoot())
+
+	require.NoError(t, service.setupForkchoiceTree(st))
+	require.LogsContain(t, hook, "starting with finalized block as head")
+	require.Equal(t, 1, service.cfg.ForkChoiceStore.NodeCount())
 }

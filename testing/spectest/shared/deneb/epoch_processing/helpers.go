@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	state_native "github.com/OffchainLabs/prysm/v6/beacon-chain/state/state-native"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
-	"github.com/bazelbuild/rules_go/go/tools/bazel"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	state_native "github.com/OffchainLabs/prysm/v7/beacon-chain/state/state-native"
+	"github.com/OffchainLabs/prysm/v7/build/bazel"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
 	"github.com/golang/snappy"
 	"google.golang.org/protobuf/proto"
 )
@@ -33,7 +33,7 @@ func RunEpochOperationTest(
 	if err := preBeaconStateBase.UnmarshalSSZ(preBeaconStateSSZ); err != nil {
 		t.Fatalf("Failed to unmarshal: %v", err)
 	}
-	preBeaconState, err := state_native.InitializeFromProtoDeneb(preBeaconStateBase)
+	preBeaconState, err := state_native.InitializeFromProtoUnsafeDeneb(preBeaconStateBase)
 	require.NoError(t, err)
 
 	// If the post.ssz is not present, it means the test should fail on our end.

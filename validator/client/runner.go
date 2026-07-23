@@ -6,14 +6,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/api/client"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	prysmTrace "github.com/OffchainLabs/prysm/v6/monitoring/tracing/trace"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
-	"github.com/OffchainLabs/prysm/v6/validator/client/iface"
+	"github.com/OffchainLabs/prysm/v7/api/client"
+	eventClient "github.com/OffchainLabs/prysm/v7/api/client/event"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	prysmTrace "github.com/OffchainLabs/prysm/v7/monitoring/tracing/trace"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
+	"github.com/OffchainLabs/prysm/v7/validator/client/iface"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
@@ -64,8 +64,7 @@ func newRunner(ctx context.Context, v iface.Validator, monitor *healthMonitor) (
 			" and will continue to use settings provided in the beacon node.")
 	}
 	if err := v.PushProposerSettings(ctx, currentSlot, true); err != nil {
-		v.Done()
-		return nil, errors.Wrap(err, "failed to update proposer settings")
+		log.WithError(err).Warn("Failed to push initial proposer settings, will retry on next slot")
 	}
 	return &runner{
 		validator:     v,
@@ -94,9 +93,12 @@ func (r *runner) run(ctx context.Context) {
 			return // Exit if context is canceled.
 		case slot := <-v.NextSlot():
 			if !r.healthMonitor.IsHealthy() {
-				log.Warn("Beacon node unhealthy, stopping runner")
+				log.WithField("url", r.validator.Host()).Warn("Beacon node unhealthy, stopping runner")
 				return
 			}
+
+			// Restart the event stream if it died, or rebind it after a fallback
+			v.EnsureEventStream(ctx, eventClient.DefaultEventTopics)
 
 			deadline := v.SlotDeadline(slot)
 			slotCtx, cancel := context.WithDeadline(ctx, deadline) //nolint:govet
@@ -121,6 +123,9 @@ func (r *runner) run(ctx context.Context) {
 					continue
 				}
 				dutiesCancel()
+			} else {
+				// Mid-epoch: retry any failed next-epoch duties
+				v.MaybeRetryMissingNextDuties(ctx, slot)
 			}
 
 			// call push proposer settings often to account for the following edge cases:
@@ -238,10 +243,8 @@ func initialize(ctx context.Context, v iface.Validator) error {
 
 func performRoles(slotCtx context.Context, allRoles map[[48]byte][]iface.ValidatorRole, v iface.Validator, slot primitives.Slot, wg *sync.WaitGroup, span trace.Span) {
 	for pubKey, roles := range allRoles {
-		wg.Add(len(roles))
 		for _, role := range roles {
-			go func(role iface.ValidatorRole, pubKey [fieldparams.BLSPubkeyLength]byte) {
-				defer wg.Done()
+			wg.Go(func() {
 				switch role {
 				case iface.RoleAttester:
 					v.SubmitAttestation(slotCtx, slot, pubKey)
@@ -253,12 +256,14 @@ func performRoles(slotCtx context.Context, allRoles map[[48]byte][]iface.Validat
 					v.SubmitSyncCommitteeMessage(slotCtx, slot, pubKey)
 				case iface.RoleSyncCommitteeAggregator:
 					v.SubmitSignedContributionAndProof(slotCtx, slot, pubKey)
+				case iface.RolePTCMember:
+					v.SubmitPayloadAttestation(slotCtx, slot, pubKey)
 				case iface.RoleUnknown:
 					log.WithField("pubkey", fmt.Sprintf("%#x", bytesutil.Trunc(pubKey[:]))).Trace("No active roles, doing nothing")
 				default:
 					log.Warnf("Unhandled role %v", role)
 				}
-			}(role, pubKey)
+			})
 		}
 	}
 
@@ -273,9 +278,10 @@ func performRoles(slotCtx context.Context, allRoles map[[48]byte][]iface.Validat
 						" should never happen! Please file a report at github.com/prysmaticlabs/prysm/issues/new")
 			}
 		}()
+		// Log submissions from the current slot
+		v.LogSubmissions(slot)
+
 		// Log performance in the previous slot
-		v.LogSubmittedAtts(slot)
-		v.LogSubmittedSyncCommitteeMessages()
 		if err := v.LogValidatorGainsAndLosses(slotCtx, slot); err != nil {
 			log.WithError(err).Error("Could not report validator's rewards/penalties")
 		}

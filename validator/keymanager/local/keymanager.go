@@ -8,16 +8,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/OffchainLabs/prysm/v6/async/event"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/crypto/bls"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/monitoring/tracing/trace"
-	validatorpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1/validator-client"
-	"github.com/OffchainLabs/prysm/v6/runtime/interop"
-	"github.com/OffchainLabs/prysm/v6/validator/accounts/iface"
-	"github.com/OffchainLabs/prysm/v6/validator/accounts/petnames"
-	"github.com/OffchainLabs/prysm/v6/validator/keymanager"
+	"github.com/OffchainLabs/prysm/v7/async/event"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/crypto/bls"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/monitoring/tracing/trace"
+	validatorpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1/validator-client"
+	"github.com/OffchainLabs/prysm/v7/validator/accounts/iface"
+	"github.com/OffchainLabs/prysm/v7/validator/accounts/petnames"
+	"github.com/OffchainLabs/prysm/v7/validator/keymanager"
 	"github.com/google/uuid"
 	"github.com/logrusorgru/aurora"
 	"github.com/pkg/errors"
@@ -71,10 +70,10 @@ func (a *accountStore) Copy() *accountStore {
 // AccountsKeystoreRepresentation defines an internal Prysm representation
 // of validator accounts, encrypted according to the EIP-2334 standard.
 type AccountsKeystoreRepresentation struct {
-	Crypto  map[string]interface{} `json:"crypto"`
-	ID      string                 `json:"uuid"`
-	Version uint                   `json:"version"`
-	Name    string                 `json:"name"`
+	Crypto  map[string]any `json:"crypto"`
+	ID      string         `json:"uuid"`
+	Version uint           `json:"version"`
+	Name    string         `json:"name"`
 }
 
 // ResetCaches for the keymanager.
@@ -102,38 +101,6 @@ func NewKeymanager(ctx context.Context, cfg *SetupConfig) (*Keymanager, error) {
 		// all-accounts.keystore.json file in the wallet directory.
 		go k.listenForAccountChanges(ctx)
 	}
-	return k, nil
-}
-
-// InteropKeymanagerConfig is used on validator launch to initialize the keymanager.
-// InteropKeys are used for testing purposes.
-type InteropKeymanagerConfig struct {
-	Offset           uint64
-	NumValidatorKeys uint64
-}
-
-// NewInteropKeymanager instantiates a new imported keymanager with the deterministically generated interop keys.
-// InteropKeys are used for testing purposes.
-func NewInteropKeymanager(_ context.Context, offset, numValidatorKeys uint64) (*Keymanager, error) {
-	k := &Keymanager{
-		accountsChangedFeed: new(event.Feed),
-	}
-	if numValidatorKeys == 0 {
-		return k, nil
-	}
-	secretKeys, publicKeys, err := interop.DeterministicallyGenerateKeys(offset, numValidatorKeys)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not generate interop keys")
-	}
-	lock.Lock()
-	pubKeys := make([][fieldparams.BLSPubkeyLength]byte, numValidatorKeys)
-	for i := uint64(0); i < numValidatorKeys; i++ {
-		publicKey := bytesutil.ToBytes48(publicKeys[i].Marshal())
-		pubKeys[i] = publicKey
-		secretKeysCache[publicKey] = secretKeys[i]
-	}
-	orderedPublicKeys = pubKeys
-	lock.Unlock()
 	return k, nil
 }
 
@@ -374,7 +341,7 @@ func updateAccountsStoreKeys(store *accountStore, privateKeys, publicKeys [][]by
 	}
 	// We append to the accounts store keys only
 	// if the private/secret key do not already exist, to prevent duplicates.
-	for i := 0; i < len(privateKeys); i++ {
+	for i := range privateKeys {
 		sk := privateKeys[i]
 		pk := publicKeys[i]
 		_, privKeyExists := existingPrivKeys[string(sk)]
@@ -414,7 +381,7 @@ func (km *Keymanager) ListKeymanagerAccounts(ctx context.Context, cfg keymanager
 			return errors.Wrap(err, "could not fetch private keys")
 		}
 	}
-	for i := 0; i < len(accountNames); i++ {
+	for i := range accountNames {
 		fmt.Println("")
 		fmt.Printf("%s | %s\n", au.BrightBlue(fmt.Sprintf("Account %d", i)).Bold(), au.BrightGreen(accountNames[i]).Bold())
 		fmt.Printf("%s %#x\n", au.BrightMagenta("[validating public key]").Bold(), pubKeys[i])
@@ -429,12 +396,12 @@ func (km *Keymanager) ListKeymanagerAccounts(ctx context.Context, cfg keymanager
 }
 
 func CreatePrintoutOfKeys(keys [][]byte) string {
-	var keysStr string
+	var keysStr strings.Builder
 	for i, k := range keys {
 		if i != 0 {
-			keysStr += "," // Add a comma before each key except the first one
+			keysStr.WriteString(",") // Add a comma before each key except the first one
 		}
-		keysStr += fmt.Sprintf("%#x", bytesutil.Trunc(k))
+		keysStr.WriteString(fmt.Sprintf("%#x", bytesutil.Trunc(k)))
 	}
-	return keysStr
+	return keysStr.String()
 }

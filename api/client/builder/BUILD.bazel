@@ -5,10 +5,12 @@ go_library(
     srcs = [
         "bid.go",
         "client.go",
+        "client_gloas.go",
         "errors.go",
+        "log.go",
         "types.go",
     ],
-    importpath = "github.com/OffchainLabs/prysm/v6/api/client/builder",
+    importpath = "github.com/OffchainLabs/prysm/v7/api/client/builder",
     visibility = ["//visibility:public"],
     deps = [
         "//api:go_default_library",
@@ -21,6 +23,7 @@ go_library(
         "//consensus-types/interfaces:go_default_library",
         "//consensus-types/primitives:go_default_library",
         "//encoding/bytesutil:go_default_library",
+        "//io/logs:go_default_library",
         "//math:go_default_library",
         "//monitoring/tracing:go_default_library",
         "//monitoring/tracing/trace:go_default_library",
@@ -39,6 +42,7 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = [
+        "client_gloas_test.go",
         "client_test.go",
         "types_test.go",
     ],
@@ -63,6 +67,5 @@ go_test(
         "@com_github_ethereum_go_ethereum//common/hexutil:go_default_library",
         "@com_github_pkg_errors//:go_default_library",
         "@com_github_prysmaticlabs_go_bitfield//:go_default_library",
-        "@com_github_sirupsen_logrus//:go_default_library",
     ],
 )

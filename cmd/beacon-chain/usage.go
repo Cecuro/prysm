@@ -5,14 +5,15 @@ import (
 	"io"
 	"sort"
 
-	"github.com/OffchainLabs/prysm/v6/cmd"
-	"github.com/OffchainLabs/prysm/v6/cmd/beacon-chain/flags"
-	"github.com/OffchainLabs/prysm/v6/cmd/beacon-chain/genesis"
-	"github.com/OffchainLabs/prysm/v6/cmd/beacon-chain/storage"
-	backfill "github.com/OffchainLabs/prysm/v6/cmd/beacon-chain/sync/backfill/flags"
-	"github.com/OffchainLabs/prysm/v6/cmd/beacon-chain/sync/checkpoint"
-	"github.com/OffchainLabs/prysm/v6/config/features"
-	"github.com/OffchainLabs/prysm/v6/runtime/debug"
+	"github.com/OffchainLabs/prysm/v7/cmd"
+	das "github.com/OffchainLabs/prysm/v7/cmd/beacon-chain/das/flags"
+	"github.com/OffchainLabs/prysm/v7/cmd/beacon-chain/flags"
+	"github.com/OffchainLabs/prysm/v7/cmd/beacon-chain/genesis"
+	"github.com/OffchainLabs/prysm/v7/cmd/beacon-chain/storage"
+	backfill "github.com/OffchainLabs/prysm/v7/cmd/beacon-chain/sync/backfill/flags"
+	"github.com/OffchainLabs/prysm/v7/cmd/beacon-chain/sync/checkpoint"
+	"github.com/OffchainLabs/prysm/v7/config/features"
+	"github.com/OffchainLabs/prysm/v7/runtime/debug"
 	"github.com/urfave/cli/v2"
 )
 
@@ -64,7 +65,6 @@ var appHelpFlagGroups = []flagGroup{
 			flags.CertFlag,
 			flags.ChainID,
 			flags.DisableDebugRPCEndpoints,
-			flags.HTTPModules,
 			flags.HTTPServerCorsDomain,
 			flags.HTTPServerHost,
 			flags.HTTPServerPort,
@@ -73,6 +73,8 @@ var appHelpFlagGroups = []flagGroup{
 			flags.RPCHost,
 			flags.RPCPort,
 			flags.BatchVerifierLimit,
+			flags.StateDiffExponents,
+			flags.PostponeShutdownForProposals,
 		},
 	},
 	{
@@ -101,20 +103,21 @@ var appHelpFlagGroups = []flagGroup{
 			flags.BlobBatchLimitBurstFactor,
 			flags.DataColumnBatchLimit,
 			flags.DataColumnBatchLimitBurstFactor,
+			flags.PartialDataColumns,
 			flags.BlockBatchLimit,
 			flags.BlockBatchLimitBurstFactor,
 			flags.MaxConcurrentDials,
 			flags.MinPeersPerSubnet,
 			flags.MinSyncPeers,
 			flags.SubscribeToAllSubnets,
-			flags.SubscribeAllDataSubnets,
+			flags.Supernode,
+			flags.SemiSupernode,
 		},
 	},
 	{ // Flags relevant to storing data on disk and configuring the beacon chain database.
 		Name: "db",
 		Flags: []cli.Flag{
 			backfill.BackfillBatchSize,
-			backfill.BackfillOldestSlot,
 			backfill.BackfillWorkerCount,
 			backfill.EnableExperimentalBackfill,
 			cmd.ClearDB,
@@ -122,10 +125,11 @@ var appHelpFlagGroups = []flagGroup{
 			cmd.ForceClearDB,
 			cmd.RestoreSourceFileFlag,
 			cmd.RestoreTargetDirFlag,
+			das.BackfillOldestSlot,
+			das.BlobRetentionEpochFlag,
 			flags.BeaconDBPruning,
 			flags.PrunerRetentionEpochs,
 			flags.SlotsPerArchivedPoint,
-			storage.BlobRetentionEpochFlag,
 			storage.BlobStorageLayout,
 			storage.BlobStoragePathFlag,
 			storage.DataColumnStoragePathFlag,
@@ -141,7 +145,7 @@ var appHelpFlagGroups = []flagGroup{
 			flags.MinBuilderBid,
 			flags.MinBuilderDiff,
 			flags.SuggestedFeeRecipient,
-			flags.EnableBuilderSSZ,
+			flags.DisableBuilderSSZ,
 		},
 	},
 	{ // Flags relevant to syncing the beacon chain.
@@ -166,7 +170,6 @@ var appHelpFlagGroups = []flagGroup{
 			flags.ExecutionEngineHeaders,
 			flags.ExecutionJWTSecretFlag,
 			flags.JwtId,
-			flags.InteropMockEth1DataVotesFlag,
 		},
 	},
 	{ // Flags relevant to configuring beacon chain monitoring.
@@ -194,9 +197,12 @@ var appHelpFlagGroups = []flagGroup{
 		// Flags in the "log" section control how Prysm handles logging.
 		Name: "log",
 		Flags: []cli.Flag{
+			cmd.DisableLogColor,
 			cmd.LogFormat,
 			cmd.LogFileName,
 			cmd.VerbosityFlag,
+			flags.DisableEphemeralLogFile,
+			cmd.LogVModuleFlag,
 		},
 	},
 	{ // Feature flags.
@@ -235,12 +241,12 @@ func init() {
 	cli.AppHelpTemplate = appHelpTemplate
 
 	type helpData struct {
-		App        interface{}
+		App        any
 		FlagGroups []flagGroup
 	}
 
 	originalHelpPrinter := cli.HelpPrinter
-	cli.HelpPrinter = func(w io.Writer, tmpl string, data interface{}) {
+	cli.HelpPrinter = func(w io.Writer, tmpl string, data any) {
 		if tmpl == appHelpTemplate {
 			for _, group := range appHelpFlagGroups {
 				sort.Sort(cli.FlagsByName(group.Flags))

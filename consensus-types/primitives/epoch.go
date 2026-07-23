@@ -3,7 +3,7 @@ package primitives
 import (
 	"fmt"
 
-	"github.com/OffchainLabs/prysm/v6/math"
+	"github.com/OffchainLabs/prysm/v7/math"
 	fssz "github.com/prysmaticlabs/fastssz"
 )
 
@@ -13,14 +13,6 @@ var _ fssz.Unmarshaler = (*Epoch)(nil)
 
 // Epoch represents a single epoch.
 type Epoch uint64
-
-// MaxEpoch compares two epochs and returns the greater one.
-func MaxEpoch(a, b Epoch) Epoch {
-	if a > b {
-		return a
-	}
-	return b
-}
 
 // Mul multiplies epoch by x.
 // In case of arithmetic issues (overflow/underflow/div by zero) panic is thrown.

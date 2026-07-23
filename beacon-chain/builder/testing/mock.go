@@ -3,17 +3,18 @@ package testing
 import (
 	"context"
 
-	"github.com/OffchainLabs/prysm/v6/api/client/builder"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/cache"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/db"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/interfaces"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	v1 "github.com/OffchainLabs/prysm/v6/proto/engine/v1"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/api/client/builder"
+	beaconbuilder "github.com/OffchainLabs/prysm/v7/beacon-chain/builder"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/cache"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/db"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	v1 "github.com/OffchainLabs/prysm/v7/proto/engine/v1"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/pkg/errors"
 )
 
@@ -39,6 +40,11 @@ type MockBuilderService struct {
 	RegistrationCache             *cache.RegistrationCache
 	ErrGetHeader                  error
 	ErrRegisterValidator          error
+	PayloadBid                    *ethpb.SignedExecutionPayloadBid
+	PayloadBids                   []beaconbuilder.PayloadBid
+	ErrGetExecutionPayloadBid     error
+	ErrSubmitSignedBeaconBlock    error
+	ErrSubmitBuilderPreferences   error
 	Cfg                           *Config
 }
 
@@ -117,7 +123,28 @@ func (s *MockBuilderService) RegisterValidator(context.Context, []*ethpb.SignedV
 	return s.ErrRegisterValidator
 }
 
+// SubmitBuilderPreferences for mocking.
+func (s *MockBuilderService) SubmitBuilderPreferences(_ context.Context, _ [48]byte, _ *ethpb.BuilderPreferencesRequestV1) error {
+	return s.ErrSubmitBuilderPreferences
+}
+
 // SubmitBlindedBlockPostFulu for mocking.
 func (s *MockBuilderService) SubmitBlindedBlockPostFulu(_ context.Context, _ interfaces.ReadOnlySignedBeaconBlock) error {
 	return s.ErrSubmitBlindedBlockPostFulu
+}
+
+// GetExecutionPayloadBid for mocking.
+func (s *MockBuilderService) GetExecutionPayloadBid(_ context.Context, _ primitives.Slot, _, _ [32]byte, _ [48]byte, _ []*ethpb.SignedRequestAuthV1) ([]beaconbuilder.PayloadBid, error) {
+	if s.PayloadBids != nil {
+		return s.PayloadBids, s.ErrGetExecutionPayloadBid
+	}
+	if s.PayloadBid != nil {
+		return []beaconbuilder.PayloadBid{{Bid: s.PayloadBid}}, s.ErrGetExecutionPayloadBid
+	}
+	return nil, s.ErrGetExecutionPayloadBid
+}
+
+// SubmitSignedBeaconBlock for mocking.
+func (s *MockBuilderService) SubmitSignedBeaconBlock(_ context.Context, _ string, _ interfaces.ReadOnlySignedBeaconBlock) error {
+	return s.ErrSubmitSignedBeaconBlock
 }

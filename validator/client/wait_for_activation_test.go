@@ -5,16 +5,16 @@ import (
 	"testing"
 	"time"
 
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	validatormock "github.com/OffchainLabs/prysm/v6/testing/validator-mock"
-	walletMock "github.com/OffchainLabs/prysm/v6/validator/accounts/testing"
-	"github.com/OffchainLabs/prysm/v6/validator/client/testutil"
-	"github.com/OffchainLabs/prysm/v6/validator/keymanager/derived"
-	constant "github.com/OffchainLabs/prysm/v6/validator/testing"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	validatormock "github.com/OffchainLabs/prysm/v7/testing/validator-mock"
+	walletMock "github.com/OffchainLabs/prysm/v7/validator/accounts/testing"
+	"github.com/OffchainLabs/prysm/v7/validator/client/testutil"
+	"github.com/OffchainLabs/prysm/v7/validator/keymanager/derived"
+	constant "github.com/OffchainLabs/prysm/v7/validator/testing"
 	"github.com/pkg/errors"
 	logTest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/tyler-smith/go-bip39"
@@ -27,13 +27,11 @@ func TestWaitActivation_Exiting_OK(t *testing.T) {
 	defer ctrl.Finish()
 	validatorClient := validatormock.NewMockValidatorClient(ctrl)
 	chainClient := validatormock.NewMockChainClient(ctrl)
-	prysmChainClient := validatormock.NewMockPrysmChainClient(ctrl)
 	kp := randKeypair(t)
 	v := validator{
 		validatorClient:        validatorClient,
 		km:                     newMockKeymanager(t, kp),
 		chainClient:            chainClient,
-		prysmChainClient:       prysmChainClient,
 		accountsChangedChannel: make(chan [][fieldparams.BLSPubkeyLength]byte, 1),
 	}
 	ctx := t.Context()
@@ -54,24 +52,22 @@ func TestWaitForActivation_RefetchKeys(t *testing.T) {
 	params.SetupTestConfigCleanup(t)
 	cfg := params.MainnetConfig()
 	cfg.ConfigName = "test"
-	cfg.SecondsPerSlot = 1
+	cfg.SlotDurationMilliseconds = 1000
 	params.OverrideBeaconConfig(cfg)
 	hook := logTest.NewGlobal()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	validatorClient := validatormock.NewMockValidatorClient(ctrl)
 	chainClient := validatormock.NewMockChainClient(ctrl)
-	prysmChainClient := validatormock.NewMockPrysmChainClient(ctrl)
 
 	kp := randKeypair(t)
 	km := newMockKeymanager(t)
 
 	v := validator{
-		validatorClient:  validatorClient,
-		km:               km,
-		chainClient:      chainClient,
-		prysmChainClient: prysmChainClient,
-		pubkeyToStatus:   make(map[[48]byte]*validatorStatus),
+		validatorClient: validatorClient,
+		km:              km,
+		chainClient:     chainClient,
+		pubkeyToStatus:  make(map[[48]byte]*validatorStatus),
 	}
 	resp := testutil.GenerateMultipleValidatorStatusResponse([][]byte{kp.pub[:]})
 	resp.Statuses[0].Status = ethpb.ValidatorStatus_ACTIVE
@@ -112,13 +108,11 @@ func TestWaitForActivation_AccountsChanged(t *testing.T) {
 		km := newMockKeymanager(t, inactive)
 		validatorClient := validatormock.NewMockValidatorClient(ctrl)
 		chainClient := validatormock.NewMockChainClient(ctrl)
-		prysmChainClient := validatormock.NewMockPrysmChainClient(ctrl)
 		ch := make(chan [][fieldparams.BLSPubkeyLength]byte, 1)
 		v := validator{
 			validatorClient:        validatorClient,
 			km:                     km,
 			chainClient:            chainClient,
-			prysmChainClient:       prysmChainClient,
 			pubkeyToStatus:         make(map[[48]byte]*validatorStatus),
 			accountsChangedChannel: ch,
 			accountChangedSub:      km.SubscribeAccountChanges(ch),
@@ -140,7 +134,7 @@ func TestWaitForActivation_AccountsChanged(t *testing.T) {
 				&ethpb.MultipleValidatorStatusRequest{
 					PublicKeys: [][]byte{inactive.pub[:]},
 				},
-			).Return(inactiveResp, nil).Do(func(arg0, arg1 interface{}) {
+			).Return(inactiveResp, nil).Do(func(arg0, arg1 any) {
 				require.NoError(t, km.add(active))
 				km.SimulateAccountChanges([][fieldparams.BLSPubkeyLength]byte{inactive.pub, active.pub})
 			}),
@@ -190,14 +184,12 @@ func TestWaitForActivation_AccountsChanged(t *testing.T) {
 		require.NoError(t, err)
 		validatorClient := validatormock.NewMockValidatorClient(ctrl)
 		chainClient := validatormock.NewMockChainClient(ctrl)
-		prysmChainClient := validatormock.NewMockPrysmChainClient(ctrl)
 		v := validator{
-			validatorClient:  validatorClient,
-			km:               km,
-			genesisTime:      time.Unix(1, 0),
-			chainClient:      chainClient,
-			prysmChainClient: prysmChainClient,
-			pubkeyToStatus:   make(map[[48]byte]*validatorStatus),
+			validatorClient: validatorClient,
+			km:              km,
+			genesisTime:     time.Unix(1, 0),
+			chainClient:     chainClient,
+			pubkeyToStatus:  make(map[[48]byte]*validatorStatus),
 		}
 
 		inactiveResp := testutil.GenerateMultipleValidatorStatusResponse([][]byte{inactivePubKey[:]})
@@ -215,7 +207,7 @@ func TestWaitForActivation_AccountsChanged(t *testing.T) {
 				&ethpb.MultipleValidatorStatusRequest{
 					PublicKeys: [][]byte{inactivePubKey[:]},
 				},
-			).Return(inactiveResp, nil).Do(func(arg0, arg1 interface{}) {
+			).Return(inactiveResp, nil).Do(func(arg0, arg1 any) {
 				err = km.RecoverAccountsFromMnemonic(ctx, constant.TestMnemonic, derived.DefaultMnemonicLanguage, "", 2)
 				require.NoError(t, err)
 				pks, err := km.FetchValidatingPublicKeys(ctx)
@@ -247,19 +239,17 @@ func TestWaitForActivation_AttemptsReconnectionOnFailure(t *testing.T) {
 	params.SetupTestConfigCleanup(t)
 	cfg := params.MainnetConfig()
 	cfg.ConfigName = "test"
-	cfg.SecondsPerSlot = 1
+	cfg.SlotDurationMilliseconds = 1000
 	params.OverrideBeaconConfig(cfg)
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	validatorClient := validatormock.NewMockValidatorClient(ctrl)
 	chainClient := validatormock.NewMockChainClient(ctrl)
-	prysmChainClient := validatormock.NewMockPrysmChainClient(ctrl)
 	kp := randKeypair(t)
 	v := validator{
 		validatorClient:        validatorClient,
 		km:                     newMockKeymanager(t, kp),
 		chainClient:            chainClient,
-		prysmChainClient:       prysmChainClient,
 		pubkeyToStatus:         make(map[[48]byte]*validatorStatus),
 		accountsChangedChannel: make(chan [][fieldparams.BLSPubkeyLength]byte, 1),
 	}

@@ -4,20 +4,20 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/interfaces"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	pb "github.com/OffchainLabs/prysm/v6/proto/engine/v1"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	pb "github.com/OffchainLabs/prysm/v7/proto/engine/v1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 )
 
-func payloadToBody(t *testing.T, ed interfaces.ExecutionData) *pb.ExecutionPayloadBody {
-	body := &pb.ExecutionPayloadBody{}
+func payloadToBody(t *testing.T, ed interfaces.ExecutionData) *pb.ExecutionPayloadBodyV1 {
+	body := &pb.ExecutionPayloadBodyV1{}
 	txs, err := ed.Transactions()
 	require.NoError(t, err)
 	wd, err := ed.Withdrawals()
@@ -118,7 +118,7 @@ func TestPayloadBodiesViaUnblinder(t *testing.T) {
 	t.Run("mix of non-empty and empty", func(t *testing.T) {
 		cli, srv := newMockEngine(t)
 		srv.register(GetPayloadBodiesByHashV1, func(msg *jsonrpcMessage, w http.ResponseWriter, r *http.Request) {
-			executionPayloadBodies := []*pb.ExecutionPayloadBody{
+			executionPayloadBodies := []*pb.ExecutionPayloadBodyV1{
 				payloadToBody(t, fx.denebBlock.blinded.header),
 				payloadToBody(t, fx.emptyDenebBlock.blinded.header),
 			}
@@ -259,11 +259,11 @@ func TestReconstructBlindedBlockBatchFallbackToRange(t *testing.T) {
 		cli, srv := newMockEngine(t)
 		fx := testBlindedBlockFixtures(t)
 		srv.register(GetPayloadBodiesByHashV1, func(msg *jsonrpcMessage, w http.ResponseWriter, r *http.Request) {
-			executionPayloadBodies := []*pb.ExecutionPayloadBody{nil, nil}
+			executionPayloadBodies := []*pb.ExecutionPayloadBodyV1{nil, nil}
 			mockWriteResult(t, w, msg, executionPayloadBodies)
 		})
 		srv.register(GetPayloadBodiesByRangeV1, func(msg *jsonrpcMessage, w http.ResponseWriter, r *http.Request) {
-			executionPayloadBodies := []*pb.ExecutionPayloadBody{nil, nil}
+			executionPayloadBodies := []*pb.ExecutionPayloadBodyV1{nil, nil}
 			mockWriteResult(t, w, msg, executionPayloadBodies)
 		})
 		toUnblind := []interfaces.ReadOnlySignedBeaconBlock{
@@ -279,11 +279,11 @@ func TestReconstructBlindedBlockBatchFallbackToRange(t *testing.T) {
 		cli, srv := newMockEngine(t)
 		fx := testBlindedBlockFixtures(t)
 		srv.register(GetPayloadBodiesByHashV1, func(msg *jsonrpcMessage, w http.ResponseWriter, r *http.Request) {
-			executionPayloadBodies := []*pb.ExecutionPayloadBody{nil, nil}
+			executionPayloadBodies := []*pb.ExecutionPayloadBodyV1{nil, nil}
 			mockWriteResult(t, w, msg, executionPayloadBodies)
 		})
 		srv.register(GetPayloadBodiesByRangeV1, func(msg *jsonrpcMessage, w http.ResponseWriter, r *http.Request) {
-			executionPayloadBodies := []*pb.ExecutionPayloadBody{
+			executionPayloadBodies := []*pb.ExecutionPayloadBodyV1{
 				payloadToBody(t, fx.denebBlock.blinded.header),
 				payloadToBody(t, fx.emptyDenebBlock.blinded.header),
 			}
@@ -300,7 +300,7 @@ func TestReconstructBlindedBlockBatchFallbackToRange(t *testing.T) {
 		cli, srv := newMockEngine(t)
 		fx := testBlindedBlockFixtures(t)
 		srv.register(GetPayloadBodiesByHashV1, func(msg *jsonrpcMessage, w http.ResponseWriter, r *http.Request) {
-			executionPayloadBodies := []*pb.ExecutionPayloadBody{nil, nil, nil}
+			executionPayloadBodies := []*pb.ExecutionPayloadBodyV1{nil, nil, nil}
 			mockWriteResult(t, w, msg, executionPayloadBodies)
 		})
 		srv.register(GetPayloadBodiesByRangeV1, func(msg *jsonrpcMessage, w http.ResponseWriter, r *http.Request) {
@@ -310,7 +310,7 @@ func TestReconstructBlindedBlockBatchFallbackToRange(t *testing.T) {
 			// Return first 2 blocks by number, which are contiguous.
 			if start == fx.denebBlock.blinded.header.BlockNumber() {
 				require.Equal(t, uint64(2), count)
-				executionPayloadBodies := []*pb.ExecutionPayloadBody{
+				executionPayloadBodies := []*pb.ExecutionPayloadBodyV1{
 					payloadToBody(t, fx.denebBlock.blinded.header),
 					payloadToBody(t, fx.emptyDenebBlock.blinded.header),
 				}
@@ -320,7 +320,7 @@ func TestReconstructBlindedBlockBatchFallbackToRange(t *testing.T) {
 			// Assume it's the second request
 			require.Equal(t, fx.afterSkipDeneb.blinded.header.BlockNumber(), start)
 			require.Equal(t, uint64(1), count)
-			executionPayloadBodies := []*pb.ExecutionPayloadBody{
+			executionPayloadBodies := []*pb.ExecutionPayloadBodyV1{
 				payloadToBody(t, fx.afterSkipDeneb.blinded.header),
 			}
 			mockWriteResult(t, w, msg, executionPayloadBodies)
@@ -344,7 +344,7 @@ func TestReconstructBlindedBlockBatchDenebAndBeyond(t *testing.T) {
 		cli, srv := newMockEngine(t)
 		fx := testBlindedBlockFixtures(t)
 		srv.register(GetPayloadBodiesByHashV1, func(msg *jsonrpcMessage, w http.ResponseWriter, r *http.Request) {
-			executionPayloadBodies := []*pb.ExecutionPayloadBody{payloadToBody(t, fx.denebBlock.blinded.header), payloadToBody(t, fx.electra.blinded.header), payloadToBody(t, fx.fulu.blinded.header)}
+			executionPayloadBodies := []*pb.ExecutionPayloadBodyV1{payloadToBody(t, fx.denebBlock.blinded.header), payloadToBody(t, fx.electra.blinded.header), payloadToBody(t, fx.fulu.blinded.header)}
 			mockWriteResult(t, w, msg, executionPayloadBodies)
 		})
 		blinded := []interfaces.ReadOnlySignedBeaconBlock{

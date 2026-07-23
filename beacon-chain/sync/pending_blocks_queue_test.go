@@ -6,25 +6,25 @@ import (
 	"testing"
 	"time"
 
-	mock "github.com/OffchainLabs/prysm/v6/beacon-chain/blockchain/testing"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/helpers"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/signing"
-	dbtest "github.com/OffchainLabs/prysm/v6/beacon-chain/db/testing"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/execution"
-	doublylinkedtree "github.com/OffchainLabs/prysm/v6/beacon-chain/forkchoice/doubly-linked-tree"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/peers"
-	p2ptest "github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/testing"
-	p2ptypes "github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/types"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/startup"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state/stategen"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/crypto/rand"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
+	mock "github.com/OffchainLabs/prysm/v7/beacon-chain/blockchain/testing"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/signing"
+	dbtest "github.com/OffchainLabs/prysm/v7/beacon-chain/db/testing"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/execution"
+	doublylinkedtree "github.com/OffchainLabs/prysm/v7/beacon-chain/forkchoice/doubly-linked-tree"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/peers"
+	p2ptest "github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/testing"
+	p2ptypes "github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/types"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/startup"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state/stategen"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/crypto/rand"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/protocol"
@@ -618,7 +618,9 @@ func TestService_BatchRootRequest(t *testing.T) {
 	p1.Connect(p2)
 	assert.Equal(t, 1, len(p1.BHost.Network().Peers()), "Expected peers to be connected")
 
+	st, keys := util.DeterministicGenesisState(t, 64)
 	chain := &mock.ChainService{
+		State: st,
 		FinalizedCheckPoint: &ethpb.Checkpoint{
 			Epoch: 1,
 			Root:  make([]byte, 32),
@@ -673,6 +675,11 @@ func TestService_BatchRootRequest(t *testing.T) {
 	b4.Block.ParentRoot = b3Root[:]
 	b4Root, err := b4.Block.HashTreeRoot()
 	require.NoError(t, err)
+
+	for _, blk := range []*ethpb.SignedBeaconBlock{b2, b3, b4, b5} {
+		blk.Signature, err = signing.ComputeDomainAndSign(st, 0, blk.Block, params.BeaconConfig().DomainBeaconProposer, keys[0])
+		require.NoError(t, err)
+	}
 
 	// Send in duplicated roots to also test deduplication.
 	sentRoots := p2ptypes.BeaconBlockByRootsReq{b2Root, b2Root, b3Root, b3Root, b4Root, b5Root}

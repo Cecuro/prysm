@@ -3,7 +3,7 @@ package helpers
 import (
 	"bytes"
 
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 )
 
 func ForksEqual(s, t *ethpb.Fork) bool {
@@ -106,4 +106,20 @@ func PendingConsolidationsEqual(s, t *ethpb.PendingConsolidation) bool {
 		return false
 	}
 	return s.SourceIndex == t.SourceIndex && s.TargetIndex == t.TargetIndex
+}
+
+func BuilderPendingWithdrawalsEqual(s, t *ethpb.BuilderPendingWithdrawal) bool {
+	if s == nil && t == nil {
+		return true
+	}
+	if s == nil || t == nil {
+		return false
+	}
+	if s.Amount != t.Amount {
+		return false
+	}
+	if s.BuilderIndex != t.BuilderIndex {
+		return false
+	}
+	return bytes.Equal(s.FeeRecipient, t.FeeRecipient)
 }

@@ -2,14 +2,15 @@ package altair
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/epoch/precompute"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/helpers"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/time"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/math"
-	"github.com/OffchainLabs/prysm/v6/monitoring/tracing/trace"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/epoch/precompute"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/time"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/math"
+	"github.com/OffchainLabs/prysm/v7/monitoring/tracing/trace"
 	"github.com/pkg/errors"
 )
 
@@ -41,7 +42,7 @@ func InitializePrecomputeValidators(ctx context.Context, beaconState state.Beaco
 	if beaconState.NumValidators() != len(inactivityScores) {
 		return nil, nil, errors.New("num of validators is different than num of inactivity scores")
 	}
-	if err := beaconState.ReadFromEveryValidator(func(idx int, val state.ReadOnlyValidator) error {
+	for idx, val := range beaconState.ValidatorsReadOnlySeq() {
 		// Set validator's balance, inactivity score and slashed/withdrawable status.
 		v := &precompute.Validator{
 			CurrentEpochEffectiveBalance: val.EffectiveBalance(),
@@ -54,7 +55,7 @@ func InitializePrecomputeValidators(ctx context.Context, beaconState state.Beaco
 			v.IsActiveCurrentEpoch = true
 			bal.ActiveCurrentEpoch, err = math.Add64(bal.ActiveCurrentEpoch, val.EffectiveBalance())
 			if err != nil {
-				return err
+				return nil, nil, fmt.Errorf("add64: %w", err)
 			}
 		}
 		// Set validator's active status for previous epoch.
@@ -62,13 +63,10 @@ func InitializePrecomputeValidators(ctx context.Context, beaconState state.Beaco
 			v.IsActivePrevEpoch = true
 			bal.ActivePrevEpoch, err = math.Add64(bal.ActivePrevEpoch, val.EffectiveBalance())
 			if err != nil {
-				return err
+				return nil, nil, fmt.Errorf("add64: %w", err)
 			}
 		}
 		vals[idx] = v
-		return nil
-	}); err != nil {
-		return nil, nil, errors.Wrap(err, "could not read every validator")
 	}
 	return vals, bal, nil
 }
@@ -122,11 +120,8 @@ func ProcessInactivityScores(
 		}
 
 		if !helpers.IsInInactivityLeak(prevEpoch, finalizedEpoch) {
-			score := recoveryRate
 			// Prevents underflow below 0.
-			if score > v.InactivityScore {
-				score = v.InactivityScore
-			}
+			score := min(recoveryRate, v.InactivityScore)
 			v.InactivityScore -= score
 		}
 		inactivityScores[i] = v.InactivityScore
@@ -242,7 +237,7 @@ func ProcessRewardsAndPenaltiesPrecompute(
 	}
 
 	balances := beaconState.Balances()
-	for i := 0; i < numOfVals; i++ {
+	for i := range numOfVals {
 		vals[i].BeforeEpochTransitionBalance = balances[i]
 
 		// Compute the post balance of the validator after accounting for the

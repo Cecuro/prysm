@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	enginev1 "github.com/OffchainLabs/prysm/v6/proto/engine/v1"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
+	enginev1 "github.com/OffchainLabs/prysm/v7/proto/engine/v1"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
@@ -560,4 +560,51 @@ func TestExecutionRequests_ToConsensus_HappyPath(t *testing.T) {
 	require.Equal(t, uint64(555), result.Withdrawals[0].Amount)
 	require.Equal(t, 1, len(result.Consolidations))
 	require.DeepEqual(t, fillByteSlice(48, 0xcc), result.Consolidations[0].TargetPubkey)
+}
+
+func TestExecutionRequestsGloasFromConsensus_HappyPath(t *testing.T) {
+	er := &enginev1.ExecutionRequestsGloas{
+		Deposits: []*enginev1.DepositRequest{
+			{Pubkey: fillByteSlice(48, 0xba), WithdrawalCredentials: fillByteSlice(32, 0xaa), Amount: 33, Signature: fillByteSlice(96, 0xff), Index: 44},
+		},
+		BuilderDeposits: []*enginev1.BuilderDepositRequest{
+			{Pubkey: fillByteSlice(48, 0xb1), WithdrawalCredentials: fillByteSlice(32, 0xa1), Amount: 77, Signature: fillByteSlice(96, 0xf1)},
+		},
+		BuilderExits: []*enginev1.BuilderExitRequest{
+			{SourceAddress: fillByteSlice(20, 0xc1), Pubkey: fillByteSlice(48, 0xd1)},
+		},
+	}
+
+	result := ExecutionRequestsGloasFromConsensus(er)
+	require.NotNil(t, result)
+	require.Equal(t, 1, len(result.Deposits))
+	require.Equal(t, "33", result.Deposits[0].Amount)
+	require.Equal(t, 1, len(result.BuilderDeposits))
+	require.Equal(t, "77", result.BuilderDeposits[0].Amount)
+	require.Equal(t, hexutil.Encode(fillByteSlice(48, 0xb1)), result.BuilderDeposits[0].Pubkey)
+	require.Equal(t, hexutil.Encode(fillByteSlice(96, 0xf1)), result.BuilderDeposits[0].Signature)
+	require.Equal(t, 1, len(result.BuilderExits))
+	require.Equal(t, hexutil.Encode(fillByteSlice(20, 0xc1)), result.BuilderExits[0].SourceAddress)
+	require.Equal(t, hexutil.Encode(fillByteSlice(48, 0xd1)), result.BuilderExits[0].Pubkey)
+}
+
+func TestExecutionRequestsGloas_ToConsensus_HappyPath(t *testing.T) {
+	execReq := &ExecutionRequestsGloas{
+		BuilderDeposits: []*BuilderDepositRequest{
+			{Pubkey: hexutil.Encode(fillByteSlice(48, 0xb1)), WithdrawalCredentials: hexutil.Encode(fillByteSlice(32, 0xa1)), Amount: "77", Signature: hexutil.Encode(fillByteSlice(96, 0xf1))},
+		},
+		BuilderExits: []*BuilderExitRequest{
+			{SourceAddress: hexutil.Encode(fillByteSlice(20, 0xc1)), Pubkey: hexutil.Encode(fillByteSlice(48, 0xd1))},
+		},
+	}
+
+	result, err := execReq.ToConsensus()
+	require.NoError(t, err)
+	require.Equal(t, 1, len(result.BuilderDeposits))
+	require.Equal(t, uint64(77), result.BuilderDeposits[0].Amount)
+	require.DeepEqual(t, fillByteSlice(48, 0xb1), result.BuilderDeposits[0].Pubkey)
+	require.DeepEqual(t, fillByteSlice(96, 0xf1), result.BuilderDeposits[0].Signature)
+	require.Equal(t, 1, len(result.BuilderExits))
+	require.DeepEqual(t, fillByteSlice(20, 0xc1), result.BuilderExits[0].SourceAddress)
+	require.DeepEqual(t, fillByteSlice(48, 0xd1), result.BuilderExits[0].Pubkey)
 }

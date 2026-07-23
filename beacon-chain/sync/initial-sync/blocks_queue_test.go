@@ -6,25 +6,25 @@ import (
 	"testing"
 	"time"
 
-	mock "github.com/OffchainLabs/prysm/v6/beacon-chain/blockchain/testing"
-	dbtest "github.com/OffchainLabs/prysm/v6/beacon-chain/db/testing"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/peers"
-	p2pt "github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/testing"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/startup"
-	beaconsync "github.com/OffchainLabs/prysm/v6/beacon-chain/sync"
-	"github.com/OffchainLabs/prysm/v6/cmd/beacon-chain/flags"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/interfaces"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	leakybucket "github.com/OffchainLabs/prysm/v6/container/leaky-bucket"
-	"github.com/OffchainLabs/prysm/v6/container/slice"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	eth "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
-	prysmTime "github.com/OffchainLabs/prysm/v6/time"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	mock "github.com/OffchainLabs/prysm/v7/beacon-chain/blockchain/testing"
+	dbtest "github.com/OffchainLabs/prysm/v7/beacon-chain/db/testing"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/peers"
+	p2pt "github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/testing"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/startup"
+	beaconsync "github.com/OffchainLabs/prysm/v7/beacon-chain/sync"
+	"github.com/OffchainLabs/prysm/v7/cmd/beacon-chain/flags"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	leakybucket "github.com/OffchainLabs/prysm/v7/container/leaky-bucket"
+	"github.com/OffchainLabs/prysm/v7/container/slice"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	eth "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
+	prysmTime "github.com/OffchainLabs/prysm/v7/time"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/libp2p/go-libp2p/core/peer"
 	logTest "github.com/sirupsen/logrus/hooks/test"
 )
@@ -1049,7 +1049,7 @@ func TestBlocksQueue_stuckInUnfavourableFork(t *testing.T) {
 		DB:    beaconDB,
 		FinalizedCheckPoint: &eth.Checkpoint{
 			Epoch: finalizedEpoch,
-			Root:  []byte(fmt.Sprintf("finalized_root %d", finalizedEpoch)),
+			Root:  fmt.Appendf(nil, "finalized_root %d", finalizedEpoch),
 		},
 		Genesis:        time.Now(),
 		ValidatorsRoot: [32]byte{},
@@ -1252,7 +1252,7 @@ func TestBlocksQueue_stuckWhenHeadIsSetToOrphanedBlock(t *testing.T) {
 		DB:    beaconDB,
 		FinalizedCheckPoint: &eth.Checkpoint{
 			Epoch: finalizedEpoch,
-			Root:  []byte(fmt.Sprintf("finalized_root %d", finalizedEpoch)),
+			Root:  fmt.Appendf(nil, "finalized_root %d", finalizedEpoch),
 		},
 		Genesis:        time.Now(),
 		ValidatorsRoot: [32]byte{},
@@ -1348,5 +1348,51 @@ func TestBlocksQueue_stuckWhenHeadIsSetToOrphanedBlock(t *testing.T) {
 		blkRoot, err := blk.Block.HashTreeRoot()
 		require.NoError(t, err)
 		require.Equal(t, true, beaconDB.HasBlock(ctx, blkRoot) || mc.HasBlock(ctx, blkRoot), "slot %d", blk.Block.Slot)
+	}
+}
+
+// TestBlocksQueue_waitHighestExpectedSlot_ExtendsTargetWithinCurrentEpoch verifies the queue extends its target when peers are ahead in the same epoch.
+func TestBlocksQueue_waitHighestExpectedSlot_ExtendsTargetWithinCurrentEpoch(t *testing.T) {
+	useMinimalInitialSyncConfig(t)
+
+	const (
+		ourHeadSlot    = primitives.Slot(90)
+		initialTarget  = primitives.Slot(90)
+		latestPeerHead = primitives.Slot(92)
+	)
+
+	mc, p2p, _ := initializeTestServices(t, []primitives.Slot{}, []*peerData{
+		{blocks: makeSequence(1, latestPeerHead), finalizedEpoch: 8, headSlot: latestPeerHead},
+		{blocks: makeSequence(1, latestPeerHead), finalizedEpoch: 8, headSlot: latestPeerHead},
+	})
+	require.NoError(t, mc.State.SetSlot(ourHeadSlot))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	fetcher := newBlocksFetcher(ctx, &blocksFetcherConfig{
+		chain: mc,
+		p2p:   p2p,
+	})
+	fetcher.mode = modeNonConstrained
+
+	queueCtx, queueCancel := context.WithCancel(ctx)
+	q := &blocksQueue{
+		ctx:                 queueCtx,
+		cancel:              queueCancel,
+		blocksFetcher:       fetcher,
+		chain:               mc,
+		highestExpectedSlot: initialTarget,
+		mode:                modeNonConstrained,
+	}
+
+	extended := waitHighestExpectedSlot(q)
+
+	require.Equal(t, true, extended, "queue should extend the target when peers are ahead within the same epoch")
+	require.Equal(t, latestPeerHead, q.highestExpectedSlot, "queue should extend to the peer head slot, not the epoch start slot")
+	select {
+	case <-queueCtx.Done():
+		t.Fatal("queue canceled even though peers were still ahead within the same epoch")
+	default:
 	}
 }

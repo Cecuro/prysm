@@ -11,23 +11,25 @@ import (
 	"time"
 
 	"github.com/OffchainLabs/go-bitfield"
-	"github.com/OffchainLabs/prysm/v6/async/event"
-	"github.com/OffchainLabs/prysm/v6/cache/lru"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/config/proposer"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
-	validatormock "github.com/OffchainLabs/prysm/v6/testing/validator-mock"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
-	"github.com/OffchainLabs/prysm/v6/validator/client/iface"
-	"github.com/OffchainLabs/prysm/v6/validator/client/testutil"
-	testing2 "github.com/OffchainLabs/prysm/v6/validator/db/testing"
-	"github.com/OffchainLabs/prysm/v6/validator/keymanager/local"
+	"github.com/OffchainLabs/prysm/v7/async/event"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/config/proposer"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/interop"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
+	validatormock "github.com/OffchainLabs/prysm/v7/testing/validator-mock"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
+	"github.com/OffchainLabs/prysm/v7/validator/accounts/wallet"
+	"github.com/OffchainLabs/prysm/v7/validator/client/iface"
+	"github.com/OffchainLabs/prysm/v7/validator/client/testutil"
+	testing2 "github.com/OffchainLabs/prysm/v7/validator/db/testing"
+	"github.com/OffchainLabs/prysm/v7/validator/keymanager"
+	"github.com/OffchainLabs/prysm/v7/validator/keymanager/local"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -39,6 +41,30 @@ func cancelledContext() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	return ctx
+}
+
+// walletBackedKeymanager builds a local-keymanager wallet preloaded with numKeys
+// deterministic keys, so the runner's WaitForKeymanagerInitialization resolves a
+// real keymanager from the wallet path.
+func walletBackedKeymanager(t *testing.T, ctx context.Context, numKeys uint64) *wallet.Wallet {
+	privs, pubs, err := interop.DeterministicallyGenerateKeys(0, numKeys)
+	require.NoError(t, err)
+	w := wallet.New(&wallet.Config{
+		WalletDir:      t.TempDir(),
+		KeymanagerKind: keymanager.Local,
+		WalletPassword: "TestWalletPassword123!",
+	})
+	require.NoError(t, w.SaveWallet())
+	km, err := local.NewKeymanager(ctx, &local.SetupConfig{Wallet: w})
+	require.NoError(t, err)
+	privBytes := make([][]byte, numKeys)
+	pubBytes := make([][]byte, numKeys)
+	for i := range privs {
+		privBytes[i] = privs[i].Marshal()
+		pubBytes[i] = pubs[i].Marshal()
+	}
+	require.NoError(t, km.ImportKeypairs(ctx, privBytes, pubBytes))
+	return w
 }
 
 // Helper function to run the validator runner for tests
@@ -170,7 +196,7 @@ func TestAttests_NextSlot(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	attSubmitted := make(chan interface{})
+	attSubmitted := make(chan any)
 	v := &testutil.FakeValidator{Km: &mockKeymanager{accountsChangedFeed: &event.Feed{}}, AttSubmitted: attSubmitted}
 	ctx, cancel := context.WithCancel(t.Context())
 
@@ -192,7 +218,7 @@ func TestAttests_NextSlot(t *testing.T) {
 func TestProposes_NextSlot(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	blockProposed := make(chan interface{})
+	blockProposed := make(chan any)
 	v := &testutil.FakeValidator{Km: &mockKeymanager{accountsChangedFeed: &event.Feed{}}, BlockProposed: blockProposed}
 	ctx, cancel := context.WithCancel(t.Context())
 
@@ -216,8 +242,8 @@ func TestBothProposesAndAttests_NextSlot(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	blockProposed := make(chan interface{})
-	attSubmitted := make(chan interface{})
+	blockProposed := make(chan any)
+	attSubmitted := make(chan any)
 	v := &testutil.FakeValidator{Km: &mockKeymanager{accountsChangedFeed: &event.Feed{}}, BlockProposed: blockProposed, AttSubmitted: attSubmitted}
 	ctx, cancel := context.WithCancel(t.Context())
 
@@ -274,7 +300,7 @@ func TestKeyReload_NoActiveKey(t *testing.T) {
 func notActive(t *testing.T) [fieldparams.BLSPubkeyLength]byte {
 	var r [fieldparams.BLSPubkeyLength]byte
 	copy(r[:], testutil.ActiveKey[:])
-	for i := 0; i < len(r); i++ {
+	for i := range len(r) {
 		r[i] = bits.Reverse8(r[i])
 	}
 	require.DeepNotEqual(t, r, testutil.ActiveKey)
@@ -373,7 +399,7 @@ func TestRunnerPushesProposerSettings_ValidContext(t *testing.T) {
 	logrus.SetOutput(tlogger{t})
 
 	cfg := params.BeaconConfig()
-	cfg.SecondsPerSlot = 1
+	cfg.SlotDurationMilliseconds = 1000
 	params.SetActiveTestCleanup(t, cfg)
 
 	timedCtx, cancel := context.WithTimeout(t.Context(), 1*time.Minute)
@@ -388,6 +414,7 @@ func TestRunnerPushesProposerSettings_ValidContext(t *testing.T) {
 	liveCtx := gomock.Cond(func(ctx context.Context) bool { return ctx.Err() == nil || timedCtx.Err() != nil })
 	// Mocked client(s) setup.
 	vcm := validatormock.NewMockValidatorClient(ctrl)
+	vcm.EXPECT().ConnectionGeneration().Return(uint64(0)).AnyTimes()
 	vcm.EXPECT().WaitForChainStart(liveCtx, gomock.Any()).Return(&ethpb.ChainStartResponse{
 		GenesisTime: uint64(time.Now().Unix()) - params.BeaconConfig().SecondsPerSlot,
 	}, nil)
@@ -448,7 +475,7 @@ func TestRunnerPushesProposerSettings_ValidContext(t *testing.T) {
 	}).MinTimes(1)
 	// DomainData calls are really fast, no delay needed.
 	vcm.EXPECT().DomainData(liveCtx, gomock.Any()).Return(&ethpb.DomainResponse{SignatureDomain: make([]byte, 32)}, nil).AnyTimes()
-	vcm.EXPECT().SubscribeCommitteeSubnets(liveCtx, gomock.Any(), gomock.Any()).AnyTimes().Do(func(_, _, _ any) { delay(t) })
+	vcm.EXPECT().SubscribeCommitteeSubnets(liveCtx, gomock.Any()).AnyTimes().Do(func(_, _ any) { delay(t) })
 	vcm.EXPECT().AttestationData(liveCtx, gomock.Any()).DoAndReturn(func(ctx context.Context, req *ethpb.AttestationDataRequest) (*ethpb.AttestationData, error) {
 		defer assertValidContext(t, timedCtx, ctx)
 		delay(t)
@@ -533,9 +560,7 @@ func TestRunnerPushesProposerSettings_ValidContext(t *testing.T) {
 		validatorClient: vcm,
 		nodeClient:      ncm,
 		db:              testing2.SetupDB(t, t.TempDir(), [][fieldparams.BLSPubkeyLength]byte{}, false),
-		interopKeysConfig: &local.InteropKeymanagerConfig{
-			NumValidatorKeys: uint64(params.BeaconConfig().SlotsPerEpoch) * 4, // 4 Attesters per slot.
-		},
+		wallet:          walletBackedKeymanager(t, timedCtx, uint64(params.BeaconConfig().SlotsPerEpoch)*4),
 		proposerSettings: &proposer.Settings{
 			ProposeConfig: make(map[[fieldparams.BLSPubkeyLength]byte]*proposer.Option),
 			DefaultConfig: &proposer.Option{
@@ -552,12 +577,13 @@ func TestRunnerPushesProposerSettings_ValidContext(t *testing.T) {
 				},
 			},
 		},
-		signedValidatorRegistrations:   make(map[[fieldparams.BLSPubkeyLength]byte]*ethpb.SignedValidatorRegistrationV1),
-		slotFeed:                       &event.Feed{},
-		aggregatedSlotCommitteeIDCache: lru.New(100),
-		submittedAtts:                  make(map[submittedAttKey]*submittedAtt),
-		submittedAggregates:            make(map[submittedAttKey]*submittedAtt),
+		signedValidatorRegistrations: make(map[[fieldparams.BLSPubkeyLength]byte]*ethpb.SignedValidatorRegistrationV1),
+		duties:                       &dutyStore{},
+		slotFeed:                     &event.Feed{},
+		submittedAtts:                make(map[submittedAttKey]*submittedAtt),
+		submittedAggregates:          make(map[submittedAttKey]*submittedAtt),
 	}
+	v.aggSelector = testLocalSelector(t, v)
 
 	runTest(t, timedCtx, v)
 }

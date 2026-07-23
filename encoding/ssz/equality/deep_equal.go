@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -41,7 +41,7 @@ func deepValueEqual(v1, v2 reflect.Value, visited map[visit]bool, depth int) boo
 	// hard(t) needs to return true for at least one of the types in the cycle.
 	hard := func(k reflect.Kind) bool {
 		switch k {
-		case reflect.Slice, reflect.Ptr, reflect.Interface:
+		case reflect.Slice, reflect.Pointer, reflect.Interface:
 			return true
 		}
 		return false
@@ -103,7 +103,7 @@ func deepValueEqual(v1, v2 reflect.Value, visited map[visit]bool, depth int) boo
 			return v1.IsNil() == v2.IsNil()
 		}
 		return deepValueEqual(v1.Elem(), v2.Elem(), visited, depth+1)
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if v1.Pointer() == v2.Pointer() {
 			return true
 		}
@@ -132,7 +132,7 @@ func deepValueEqualExportedOnly(v1, v2 reflect.Value, visited map[visit]bool, de
 	// hard(t) needs to return true for at least one of the types in the cycle.
 	hard := func(k reflect.Kind) bool {
 		switch k {
-		case reflect.Slice, reflect.Ptr, reflect.Interface:
+		case reflect.Slice, reflect.Pointer, reflect.Interface:
 			return true
 		}
 		return false
@@ -193,7 +193,7 @@ func deepValueEqualExportedOnly(v1, v2 reflect.Value, visited map[visit]bool, de
 			return v1.IsNil() == v2.IsNil()
 		}
 		return deepValueEqualExportedOnly(v1.Elem(), v2.Elem(), visited, depth+1)
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if v1.Pointer() == v2.Pointer() {
 			return true
 		}
@@ -296,7 +296,7 @@ func deepValueBaseTypeEqual(v1, v2 reflect.Value) bool {
 //
 // Credits go to the Go team as this is an extension of the official Go source code's
 // reflect.DeepEqual function to handle special SSZ edge cases.
-func DeepEqual(x, y interface{}) bool {
+func DeepEqual(x, y any) bool {
 	if x == nil || y == nil {
 		return x == y
 	}
@@ -312,7 +312,7 @@ func DeepEqual(x, y interface{}) bool {
 	return deepValueEqual(v1, v2, make(map[visit]bool), 0)
 }
 
-func IsProto(item interface{}) bool {
+func IsProto(item any) bool {
 	typ := reflect.TypeOf(item)
 	kind := typ.Kind()
 	if kind != reflect.Slice && kind != reflect.Array && kind != reflect.Map {

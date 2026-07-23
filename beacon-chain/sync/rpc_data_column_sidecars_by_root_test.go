@@ -7,21 +7,21 @@ import (
 	"testing"
 	"time"
 
-	chainMock "github.com/OffchainLabs/prysm/v6/beacon-chain/blockchain/testing"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/db/filesystem"
-	testDB "github.com/OffchainLabs/prysm/v6/beacon-chain/db/testing"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/p2p"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/encoder"
-	p2ptest "github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/testing"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/types"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/startup"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
+	chainMock "github.com/OffchainLabs/prysm/v7/beacon-chain/blockchain/testing"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/db/filesystem"
+	testDB "github.com/OffchainLabs/prysm/v7/beacon-chain/db/testing"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/encoder"
+	p2ptest "github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/testing"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/types"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/startup"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/pkg/errors"
@@ -178,11 +178,11 @@ func TestDataColumnSidecarsByRootRPCHandler(t *testing.T) {
 			assert.Equal(t, root5, sidecars[3].BlockRoot())
 			assert.Equal(t, root5, sidecars[4].BlockRoot())
 
-			assert.Equal(t, uint64(4), sidecars[0].Index)
-			assert.Equal(t, uint64(6), sidecars[1].Index)
-			assert.Equal(t, uint64(7), sidecars[2].Index)
-			assert.Equal(t, uint64(8), sidecars[3].Index)
-			assert.Equal(t, uint64(9), sidecars[4].Index)
+			assert.Equal(t, uint64(4), sidecars[0].Index())
+			assert.Equal(t, uint64(6), sidecars[1].Index())
+			assert.Equal(t, uint64(7), sidecars[2].Index())
+			assert.Equal(t, uint64(8), sidecars[3].Index())
+			assert.Equal(t, uint64(9), sidecars[4].Index())
 		})
 
 		localP2P.Connect(remoteP2P)

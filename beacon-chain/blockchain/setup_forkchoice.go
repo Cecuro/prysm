@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"slices"
 
-	forkchoicetypes "github.com/OffchainLabs/prysm/v6/beacon-chain/forkchoice/types"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	"github.com/OffchainLabs/prysm/v6/config/features"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/interfaces"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	forkchoicetypes "github.com/OffchainLabs/prysm/v7/beacon-chain/forkchoice/types"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	"github.com/OffchainLabs/prysm/v7/config/features"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/pkg/errors"
 )
 
@@ -68,6 +69,10 @@ func (s *Service) setupForkchoiceTree(st state.BeaconState) error {
 		log.WithError(err).Error("Could not get head block, starting with finalized block as head")
 		return nil
 	}
+	if err := blocks.BeaconBlockIsNil(blk); err != nil {
+		log.WithError(err).WithField("headRoot", fmt.Sprintf("%#x", headRoot)).Error("Head block is nil, starting with finalized block as head")
+		return nil
+	}
 	if slots.ToEpoch(blk.Block().Slot()) < cp.Epoch {
 		log.WithField("headRoot", fmt.Sprintf("%#x", headRoot)).Error("Head block is older than finalized block, starting with finalized block as head")
 		return nil
@@ -77,8 +82,12 @@ func (s *Service) setupForkchoiceTree(st state.BeaconState) error {
 		log.WithError(err).Error("Could not build forkchoice chain, starting with finalized block as head")
 		return nil
 	}
+	resolveChainPayloadStatus(chain)
 	s.cfg.ForkChoiceStore.Lock()
 	defer s.cfg.ForkChoiceStore.Unlock()
+	if err := s.markFinalizedRootFull(chain, fRoot); err != nil {
+		log.WithError(err).Error("Could not mark finalized root as full in forkchoice")
+	}
 	return s.cfg.ForkChoiceStore.InsertChain(s.ctx, chain)
 }
 
@@ -145,6 +154,61 @@ func (s *Service) setupForkchoiceRoot(st state.BeaconState) error {
 	return nil
 }
 
+// resolveChainPayloadStatus determines which blocks in the chain had their
+// execution payloads delivered by checking if consecutive blocks' bids indicate
+// payload delivery. For each pair of blocks (chain[i], chain[i+1]), if the next
+// block's bid parentBlockHash equals the current block's bid blockHash, the
+// current block's payload was delivered.
+func resolveChainPayloadStatus(chain []*forkchoicetypes.BlockAndCheckpoints) {
+	for i := 0; i < len(chain)-1; i++ {
+		curr := chain[i].Block.Block()
+		next := chain[i+1].Block.Block()
+		if curr.Version() < version.Gloas || next.Version() < version.Gloas {
+			continue
+		}
+		builtOn, err := blocks.BlockBuiltOnParentPayload(curr, next)
+		if err != nil {
+			continue
+		}
+		if builtOn {
+			chain[i].HasPayload = true
+		}
+	}
+}
+
+// markFinalizedRootFull checks whether the finalized root block's execution
+// payload was delivered by inspecting the first block in the chain. If the first
+// block's bid parentBlockHash equals the finalized block's bid blockHash, the
+// finalized block's payload was delivered and a full node must be created in
+// forkchoice. The caller must hold the forkchoice lock.
+func (s *Service) markFinalizedRootFull(chain []*forkchoicetypes.BlockAndCheckpoints, fRoot [32]byte) error {
+	if len(chain) == 0 {
+		return nil
+	}
+	firstBlock := chain[0].Block.Block()
+	if firstBlock.Version() < version.Gloas {
+		return nil
+	}
+	fBlock, err := s.cfg.BeaconDB.Block(s.ctx, fRoot)
+	if err != nil {
+		return errors.Wrap(err, "could not get finalized block")
+	}
+	if fBlock.Block().Version() < version.Gloas {
+		return nil
+	}
+	builtOn, err := blocks.BlockBuiltOnParentPayload(fBlock.Block(), firstBlock)
+	if err != nil || !builtOn {
+		return nil
+	}
+	fBid, err := fBlock.Block().Body().SignedExecutionPayloadBid()
+	if err != nil || fBid == nil || fBid.Message == nil {
+		return nil
+	}
+	// The finalized block's payload was delivered. Create the full node.
+	s.cfg.ForkChoiceStore.MarkFullNode(fRoot, fBid.Message.GasLimit)
+	return nil
+}
+
 func (s *Service) setupForkchoiceCheckpoints() error {
 	justified, err := s.cfg.BeaconDB.JustifiedCheckpoint(s.ctx)
 	if err != nil {
@@ -166,11 +230,11 @@ func (s *Service) setupForkchoiceCheckpoints() error {
 	defer s.cfg.ForkChoiceStore.Unlock()
 	if err := s.cfg.ForkChoiceStore.UpdateJustifiedCheckpoint(s.ctx, &forkchoicetypes.Checkpoint{Epoch: justified.Epoch,
 		Root: bytesutil.ToBytes32(justified.Root)}); err != nil {
-		return errors.Wrap(err, "could not update forkchoice's justified checkpoint")
+		log.WithError(err).Error("Could not update forkchoice's justified checkpoint, trying to update finalized checkpoint anyway")
 	}
 	if err := s.cfg.ForkChoiceStore.UpdateFinalizedCheckpoint(&forkchoicetypes.Checkpoint{Epoch: finalized.Epoch,
 		Root: fRoot}); err != nil {
-		return errors.Wrap(err, "could not update forkchoice's finalized checkpoint")
+		log.WithError(err).Error("Could not update forkchoice's finalized checkpoint")
 	}
 	s.cfg.ForkChoiceStore.SetGenesisTime(s.genesisTime)
 	return nil

@@ -9,17 +9,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/api"
-	"github.com/OffchainLabs/prysm/v6/api/server/structs"
-	blockchainTesting "github.com/OffchainLabs/prysm/v6/beacon-chain/blockchain/testing"
-	rewardtesting "github.com/OffchainLabs/prysm/v6/beacon-chain/rpc/eth/rewards/testing"
-	rpctesting "github.com/OffchainLabs/prysm/v6/beacon-chain/rpc/eth/shared/testing"
-	mockSync "github.com/OffchainLabs/prysm/v6/beacon-chain/sync/initial-sync/testing"
-	"github.com/OffchainLabs/prysm/v6/network/httputil"
-	eth "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	mock2 "github.com/OffchainLabs/prysm/v6/testing/mock"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
+	"github.com/OffchainLabs/prysm/v7/api"
+	"github.com/OffchainLabs/prysm/v7/api/server/structs"
+	blockchainTesting "github.com/OffchainLabs/prysm/v7/beacon-chain/blockchain/testing"
+	rewardtesting "github.com/OffchainLabs/prysm/v7/beacon-chain/rpc/eth/rewards/testing"
+	rpctesting "github.com/OffchainLabs/prysm/v7/beacon-chain/rpc/eth/shared/testing"
+	mockSync "github.com/OffchainLabs/prysm/v7/beacon-chain/sync/initial-sync/testing"
+	"github.com/OffchainLabs/prysm/v7/network/httputil"
+	eth "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	mock2 "github.com/OffchainLabs/prysm/v7/testing/mock"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"go.uber.org/mock/gomock"
 )
@@ -57,6 +57,7 @@ func TestProduceBlockV3(t *testing.T) {
 			SyncChecker:    syncChecker,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -93,6 +94,7 @@ func TestProduceBlockV3(t *testing.T) {
 			BlockRewardFetcher: rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -131,6 +133,7 @@ func TestProduceBlockV3(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -169,6 +172,7 @@ func TestProduceBlockV3(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -207,6 +211,7 @@ func TestProduceBlockV3(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -245,6 +250,7 @@ func TestProduceBlockV3(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -283,6 +289,7 @@ func TestProduceBlockV3(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -321,6 +328,7 @@ func TestProduceBlockV3(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -359,6 +367,7 @@ func TestProduceBlockV3(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -397,6 +406,7 @@ func TestProduceBlockV3(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -435,6 +445,7 @@ func TestProduceBlockV3(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -473,6 +484,7 @@ func TestProduceBlockV3(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -505,6 +517,7 @@ func TestProduceBlockV3(t *testing.T) {
 			SyncChecker:    syncChecker,
 		}
 		request := httptest.NewRequest(http.MethodGet, "http://foo.example/eth/v3/validator/blocks/asdfsad", nil)
+		request.SetPathValue("slot", "asdfsad")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -518,6 +531,7 @@ func TestProduceBlockV3(t *testing.T) {
 			SyncChecker:    syncChecker,
 		}
 		request := httptest.NewRequest(http.MethodGet, "http://foo.example/eth/v3/validator/blocks/1?randao_reveal=0x213123", nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -566,6 +580,7 @@ func TestProduceBlockV3(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
 		server.ProduceBlockV3(writer, request)
@@ -611,6 +626,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			SyncChecker:    syncChecker,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
@@ -649,6 +665,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			BlockRewardFetcher: rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
@@ -691,6 +708,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
@@ -732,6 +750,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
@@ -773,6 +792,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
@@ -814,6 +834,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
@@ -855,6 +876,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
@@ -896,6 +918,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
@@ -937,6 +960,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
@@ -978,6 +1002,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
@@ -1019,6 +1044,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
@@ -1060,6 +1086,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}
@@ -1103,6 +1130,7 @@ func TestProduceBlockV3SSZ(t *testing.T) {
 			BlockRewardFetcher:    rewardFetcher,
 		}
 		request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://foo.example/eth/v3/validator/blocks/1?randao_reveal=%s&graffiti=%s", randao, graffiti), nil)
+		request.SetPathValue("slot", "1")
 		request.Header.Set("Accept", api.OctetStreamMediaType)
 		writer := httptest.NewRecorder()
 		writer.Body = &bytes.Buffer{}

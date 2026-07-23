@@ -6,16 +6,16 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/helpers"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
-	"github.com/OffchainLabs/prysm/v6/testing/assert"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
-	"github.com/OffchainLabs/prysm/v6/validator/client/beacon-api/mock"
-	testhelpers "github.com/OffchainLabs/prysm/v6/validator/client/beacon-api/test-helpers"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/testing/assert"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
+	"github.com/OffchainLabs/prysm/v7/validator/client/beacon-api/mock"
+	testhelpers "github.com/OffchainLabs/prysm/v7/validator/client/beacon-api/test-helpers"
 	"go.uber.org/mock/gomock"
 )
 
@@ -107,7 +107,7 @@ func TestProposeAttestation(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			jsonRestHandler := mock.NewMockJsonRestHandler(ctrl)
+			handler := mock.NewMockHandler(ctrl)
 
 			var marshalledAttestations []byte
 			if helpers.ValidateNilAttestation(test.attestation) == nil {
@@ -119,7 +119,7 @@ func TestProposeAttestation(t *testing.T) {
 			ctx := t.Context()
 
 			headers := map[string]string{"Eth-Consensus-Version": version.String(test.attestation.Version())}
-			jsonRestHandler.EXPECT().Post(
+			handler.EXPECT().Post(
 				gomock.Any(),
 				"/eth/v2/beacon/pool/attestations",
 				headers,
@@ -129,7 +129,7 @@ func TestProposeAttestation(t *testing.T) {
 				test.endpointError,
 			).Times(test.endpointCall)
 
-			validatorClient := &beaconApiValidatorClient{jsonRestHandler: jsonRestHandler}
+			validatorClient := &beaconApiValidatorClient{handler: handler}
 			proposeResponse, err := validatorClient.proposeAttestation(ctx, test.attestation)
 			if test.expectedErrorMessage != "" {
 				require.ErrorContains(t, test.expectedErrorMessage, err)
@@ -254,7 +254,7 @@ func TestProposeAttestationElectra(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			jsonRestHandler := mock.NewMockJsonRestHandler(ctrl)
+			handler := mock.NewMockHandler(ctrl)
 
 			var marshalledAttestations []byte
 			if helpers.ValidateNilAttestation(test.attestation) == nil {
@@ -268,7 +268,7 @@ func TestProposeAttestationElectra(t *testing.T) {
 			if test.expectedConsensusVersion != "" {
 				headerMatcher = gomock.Eq(map[string]string{"Eth-Consensus-Version": test.expectedConsensusVersion})
 			}
-			jsonRestHandler.EXPECT().Post(
+			handler.EXPECT().Post(
 				gomock.Any(),
 				"/eth/v2/beacon/pool/attestations",
 				headerMatcher,
@@ -278,7 +278,7 @@ func TestProposeAttestationElectra(t *testing.T) {
 				test.endpointError,
 			).Times(test.endpointCall)
 
-			validatorClient := &beaconApiValidatorClient{jsonRestHandler: jsonRestHandler}
+			validatorClient := &beaconApiValidatorClient{handler: handler}
 			proposeResponse, err := validatorClient.proposeAttestationElectra(ctx, test.attestation)
 			if test.expectedErrorMessage != "" {
 				require.ErrorContains(t, test.expectedErrorMessage, err)

@@ -6,23 +6,24 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/async"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/signing"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/config/proposer"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/interfaces"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/crypto/bls"
-	"github.com/OffchainLabs/prysm/v6/crypto/rand"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/monitoring/tracing/trace"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	validatorpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1/validator-client"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
-	"github.com/OffchainLabs/prysm/v6/validator/client/iface"
+	"github.com/OffchainLabs/prysm/v7/async"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/signing"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/config/proposer"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/crypto/bls"
+	"github.com/OffchainLabs/prysm/v7/crypto/rand"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/io/logs"
+	"github.com/OffchainLabs/prysm/v7/monitoring/tracing/trace"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	validatorpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1/validator-client"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
+	"github.com/OffchainLabs/prysm/v7/validator/client/iface"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/pkg/errors"
@@ -79,9 +80,10 @@ func (v *validator) ProposeBlock(ctx context.Context, slot primitives.Slot, pubK
 
 	// Request block from beacon node
 	b, err := v.validatorClient.BeaconBlock(ctx, &ethpb.BlockRequest{
-		Slot:         slot,
-		RandaoReveal: randaoReveal,
-		Graffiti:     g,
+		Slot:                slot,
+		RandaoReveal:        randaoReveal,
+		Graffiti:            g,
+		BuilderRequestAuths: v.builderRequestAuthsForSlot(pubKey, slot),
 	})
 	if err != nil {
 		log.WithField("slot", slot).WithError(err).Error("Failed to request block from beacon node")
@@ -128,7 +130,8 @@ func (v *validator) ProposeBlock(ctx context.Context, slot primitives.Slot, pubK
 
 	var genericSignedBlock *ethpb.GenericSignedBeaconBlock
 	// Special handling for Deneb blocks and later version because of blob side cars.
-	if blk.Version() >= version.Deneb && !blk.IsBlinded() {
+	// Gloas blocks are handled differently - no blobs in block, execution payload is separate.
+	if blk.Version() >= version.Deneb && blk.Version() < version.Gloas && !blk.IsBlinded() {
 		pb, err := blk.Proto()
 		if err != nil {
 			log.WithError(err).Error("Failed to get deneb block")
@@ -176,6 +179,11 @@ func (v *validator) ProposeBlock(ctx context.Context, slot primitives.Slot, pubK
 		return
 	}
 
+	if err := v.proposeSelfBuildEnvelope(ctx, slot, pubKey, blk); err != nil {
+		log.WithError(err).Error("Failed to propose self-build envelope")
+		return
+	}
+
 	span.SetAttributes(
 		trace.StringAttribute("blockRoot", fmt.Sprintf("%#x", blkResp.BlockRoot)),
 		trace.Int64Attribute("numDeposits", int64(len(blk.Block().Body().Deposits()))),
@@ -192,7 +200,7 @@ func (v *validator) ProposeBlock(ctx context.Context, slot primitives.Slot, pubK
 }
 
 func logProposedBlock(log *logrus.Entry, blk interfaces.SignedBeaconBlock, blkRoot []byte) error {
-	if blk.Version() >= version.Bellatrix {
+	if blk.Version() >= version.Bellatrix && blk.Version() < version.Gloas {
 		p, err := blk.Block().Body().Execution()
 		if err != nil {
 			return errors.Wrap(err, "failed to get execution payload")
@@ -227,6 +235,30 @@ func logProposedBlock(log *logrus.Entry, blk interfaces.SignedBeaconBlock, blkRo
 				log = log.WithField("kzgCommitmentCount", len(kzgs))
 			}
 		}
+	}
+	if blk.Version() >= version.Gloas {
+		bid, err := blk.Block().Body().SignedExecutionPayloadBid()
+		if err != nil {
+			return errors.Wrap(err, "failed to get execution payload bid")
+		}
+		if bid != nil && bid.Message != nil {
+			msg := bid.Message
+			log = log.WithFields(logrus.Fields{
+				"builderIndex": logs.BuilderIndexLabel(msg.BuilderIndex),
+				"bidValue":     msg.Value,
+				"blockHash":    fmt.Sprintf("%#x", bytesutil.Trunc(msg.BlockHash)),
+				"parentHash":   fmt.Sprintf("%#x", bytesutil.Trunc(msg.ParentBlockHash)),
+				"gasLimit":     msg.GasLimit,
+			})
+			if len(msg.BlobKzgCommitments) != 0 {
+				log = log.WithField("kzgCommitmentCount", len(msg.BlobKzgCommitments))
+			}
+		}
+		payloadAtts, err := blk.Block().Body().PayloadAttestations()
+		if err != nil {
+			return errors.Wrap(err, "failed to get payload attestations")
+		}
+		log = log.WithField("payloadAttestationCount", len(payloadAtts))
 	}
 
 	br := fmt.Sprintf("%#x", bytesutil.Trunc(blkRoot))

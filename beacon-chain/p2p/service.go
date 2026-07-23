@@ -9,21 +9,22 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/async"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/encoder"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/peers"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/peers/scorers"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/p2p/types"
-	"github.com/OffchainLabs/prysm/v6/cmd/beacon-chain/flags"
-	"github.com/OffchainLabs/prysm/v6/config/features"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	leakybucket "github.com/OffchainLabs/prysm/v6/container/leaky-bucket"
-	"github.com/OffchainLabs/prysm/v6/monitoring/tracing/trace"
-	prysmnetwork "github.com/OffchainLabs/prysm/v6/network"
-	"github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1/metadata"
-	"github.com/OffchainLabs/prysm/v6/runtime"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/async"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/encoder"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/partialdatacolumnbroadcaster"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/peers"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/peers/scorers"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/types"
+	"github.com/OffchainLabs/prysm/v7/cmd/beacon-chain/flags"
+	"github.com/OffchainLabs/prysm/v7/config/features"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	leakybucket "github.com/OffchainLabs/prysm/v7/container/leaky-bucket"
+	"github.com/OffchainLabs/prysm/v7/monitoring/tracing/trace"
+	prysmnetwork "github.com/OffchainLabs/prysm/v7/network"
+	"github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1/metadata"
+	"github.com/OffchainLabs/prysm/v7/runtime"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/libp2p/go-libp2p"
@@ -77,6 +78,7 @@ type Service struct {
 	privKey                  *ecdsa.PrivateKey
 	metaData                 metadata.Metadata
 	pubsub                   *pubsub.PubSub
+	partialColumnBroadcaster partialdatacolumnbroadcaster.Broadcaster
 	joinedTopics             map[string]*pubsub.Topic
 	joinedTopicsLock         sync.RWMutex
 	subnetsLock              map[uint64]*sync.RWMutex
@@ -145,6 +147,10 @@ func NewService(ctx context.Context, cfg *Config) (*Service, error) {
 		subnetsLock:           make(map[uint64]*sync.RWMutex),
 		peerDisconnectionTime: cache.New(1*time.Second, 1*time.Minute),
 		custodyInfoSet:        make(chan struct{}),
+	}
+
+	if cfg.PartialDataColumns {
+		s.partialColumnBroadcaster = partialdatacolumnbroadcaster.NewBroadcaster(ctx, log.Logger)
 	}
 
 	ipAddr := prysmnetwork.IPAddr()
@@ -314,6 +320,7 @@ func (s *Service) Stop() error {
 	if s.dv5Listener != nil {
 		s.dv5Listener.Close()
 	}
+
 	return nil
 }
 
@@ -348,6 +355,10 @@ func (*Service) Encoding() encoder.NetworkEncoding {
 // PubSub returns the p2p pubsub framework.
 func (s *Service) PubSub() *pubsub.PubSub {
 	return s.pubsub
+}
+
+func (s *Service) PartialColumnBroadcaster() partialdatacolumnbroadcaster.Broadcaster {
+	return s.partialColumnBroadcaster
 }
 
 // Host returns the currently running libp2p
@@ -477,6 +488,10 @@ func (s *Service) connectWithAllTrustedPeers(multiAddrs []multiaddr.Multiaddr) {
 		return
 	}
 	for _, info := range addrInfos {
+		if len(info.Addrs) == 0 {
+			log.WithField("peerID", info.ID).Warn("Skipping trusted peer with no transport address")
+			continue
+		}
 		// add peer into peer status
 		s.peers.Add(nil, info.ID, info.Addrs[0], network.DirUnknown)
 		// make each dial non-blocking

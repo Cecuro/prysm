@@ -6,21 +6,20 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
-	"strings"
 
-	"github.com/OffchainLabs/prysm/v6/api"
-	"github.com/OffchainLabs/prysm/v6/api/server/structs"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/rpc/eth/rewards"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/rpc/eth/shared"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/crypto/bls/common"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/monitoring/tracing/trace"
-	"github.com/OffchainLabs/prysm/v6/network/httputil"
-	eth "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/api"
+	"github.com/OffchainLabs/prysm/v7/api/server/structs"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/rpc/eth/rewards"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/rpc/eth/shared"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/crypto/bls/common"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/monitoring/tracing/trace"
+	"github.com/OffchainLabs/prysm/v7/network/httputil"
+	eth "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
@@ -49,8 +48,7 @@ func (s *Server) ProduceBlockV3(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	segments := strings.Split(r.URL.Path, "/")
-	rawSlot := segments[len(segments)-1]
+	rawSlot := r.PathValue("slot")
 	rawRandaoReveal := r.URL.Query().Get("randao_reveal")
 	rawGraffiti := r.URL.Query().Get("graffiti")
 	rawSkipRandaoVerification := r.URL.Query().Get("skip_randao_verification")

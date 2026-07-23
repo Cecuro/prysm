@@ -4,13 +4,13 @@ import (
 	"path"
 	"testing"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/electra"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/helpers"
-	state_native "github.com/OffchainLabs/prysm/v6/beacon-chain/state/state-native"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/testing/require"
-	"github.com/OffchainLabs/prysm/v6/testing/spectest/utils"
-	"github.com/OffchainLabs/prysm/v6/testing/util"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/electra"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
+	state_native "github.com/OffchainLabs/prysm/v7/beacon-chain/state/state-native"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/OffchainLabs/prysm/v7/testing/spectest/utils"
+	"github.com/OffchainLabs/prysm/v7/testing/util"
 	"github.com/golang/snappy"
 	"github.com/google/go-cmp/cmp"
 	"google.golang.org/protobuf/proto"
@@ -36,9 +36,9 @@ func RunUpgradeToElectra(t *testing.T, config string) {
 			if err := preStateBase.UnmarshalSSZ(preStateSSZ); err != nil {
 				t.Fatalf("Failed to unmarshal: %v", err)
 			}
-			preState, err := state_native.InitializeFromProtoDeneb(preStateBase)
+			preState, err := state_native.InitializeFromProtoUnsafeDeneb(preStateBase)
 			require.NoError(t, err)
-			postState, err := electra.UpgradeToElectra(preState)
+			postState, err := electra.UpgradeToElectra(t.Context(), preState)
 			require.NoError(t, err)
 			postStateFromFunction, err := state_native.ProtobufBeaconStateElectra(postState.ToProtoUnsafe())
 			require.NoError(t, err)

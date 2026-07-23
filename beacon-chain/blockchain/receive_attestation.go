@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/helpers"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	"github.com/OffchainLabs/prysm/v6/config/features"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/encoding/bytesutil"
-	"github.com/OffchainLabs/prysm/v6/monitoring/tracing/trace"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/runtime/version"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	"github.com/OffchainLabs/prysm/v7/config/features"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
+	"github.com/OffchainLabs/prysm/v7/monitoring/tracing/trace"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/runtime/version"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -94,6 +94,7 @@ func (s *Service) spawnProcessAttestationsRoutine() {
 		for {
 			select {
 			case <-s.ctx.Done():
+				ticker.Done()
 				return
 			case slotInterval := <-ticker.C():
 				if slotInterval.Interval > 0 {
@@ -115,11 +116,13 @@ func (s *Service) spawnProcessAttestationsRoutine() {
 }
 
 // UpdateHead updates the canonical head of the chain based on information from fork-choice attestations and votes.
-// The caller of this function MUST hold a lock in forkchoice
+// The caller of this function MUST NOT hold the forkchoice lock; it is acquired inside.
 func (s *Service) UpdateHead(ctx context.Context, proposingSlot primitives.Slot) {
 	ctx, span := trace.StartSpan(ctx, "beacon-chain.blockchain.UpdateHead")
 	defer span.End()
-
+	if !s.inRegularSync() {
+		return
+	}
 	start := time.Now()
 	s.cfg.ForkChoiceStore.Lock()
 	defer s.cfg.ForkChoiceStore.Unlock()
@@ -132,37 +135,55 @@ func (s *Service) UpdateHead(ctx context.Context, proposingSlot primitives.Slot)
 	processAttsElapsedTime.Observe(float64(time.Since(start).Milliseconds()))
 
 	start = time.Now()
-	// return early if we haven't changed head
-	newHeadRoot, err := s.cfg.ForkChoiceStore.Head(ctx)
+	newHeadRoot, headHash, full, err := s.cfg.ForkChoiceStore.FullHead(ctx)
 	if err != nil {
 		log.WithError(err).Error("Could not compute head from new attestations")
 		return
 	}
-	if !s.isNewHead(newHeadRoot) {
-		return
-	}
-	log.WithField("newHeadRoot", fmt.Sprintf("%#x", newHeadRoot)).Debug("Head changed due to attestations")
+	newAttHeadElapsedTime.Observe(float64(time.Since(start).Milliseconds()))
 	headState, headBlock, err := s.getStateAndBlock(ctx, newHeadRoot)
 	if err != nil {
-		log.WithError(err).Error("Could not get head block")
+		log.WithError(err).Error("Could not get head block and state")
 		return
 	}
-	newAttHeadElapsedTime.Observe(float64(time.Since(start).Milliseconds()))
-	fcuArgs := &fcuConfig{
-		headState:     headState,
-		headRoot:      newHeadRoot,
-		headBlock:     headBlock,
-		proposingSlot: proposingSlot,
+
+	var reason string
+	if full {
+		if buildFull, r := s.shouldBuildOnFullLocked(newHeadRoot, proposingSlot, s.proposingAt(headState, proposingSlot)); !buildFull {
+			full = false
+			headHash = s.cfg.ForkChoiceStore.ParentHash(newHeadRoot)
+			reason = r
+		}
 	}
-	if s.inRegularSync() {
-		fcuArgs.attributes = s.getPayloadAttribute(ctx, headState, proposingSlot, newHeadRoot[:])
-	}
-	if fcuArgs.attributes != nil && s.shouldOverrideFCU(newHeadRoot, proposingSlot) {
+	if !s.isNewHead(newHeadRoot, full) {
 		return
 	}
-	if err := s.forkchoiceUpdateWithExecution(s.ctx, fcuArgs); err != nil {
-		log.WithError(err).Error("Could not update forkchoice")
+	attr := s.getPayloadAttribute(ctx, headState, proposingSlot, newHeadRoot[:], full)
+	if !attr.IsEmpty() && s.shouldOverrideFCU(newHeadRoot, proposingSlot) {
+		return
 	}
+	fields := logrus.Fields{"newHeadRoot": fmt.Sprintf("%#x", newHeadRoot), "full": full}
+	if reason != "" {
+		fields["reason"] = reason
+	}
+	log.WithFields(fields).Debug("Head changed late in slot")
+	postGloas := slots.ToEpoch(proposingSlot) >= params.BeaconConfig().GloasForkEpoch
+	if postGloas {
+		go s.fcuFromReorgData(headBlock, newHeadRoot, headHash, full, attr, proposingSlot)
+	} else {
+		fcuArgs := &fcuConfig{
+			headState:     headState,
+			headRoot:      newHeadRoot,
+			headBlock:     headBlock,
+			proposingSlot: proposingSlot,
+			attributes:    attr,
+		}
+		go s.forkchoiceUpdateWithExecution(s.ctx, fcuArgs)
+	}
+	if err := s.saveHead(s.ctx, newHeadRoot, headBlock, headState, full); err != nil {
+		log.WithError(err).Error("Could not save head")
+	}
+	s.pruneAttsFromPool(s.ctx, headState, headBlock)
 }
 
 // This processes fork choice attestations from the pool to account for validator votes and fork choice.

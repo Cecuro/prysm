@@ -6,16 +6,16 @@ import (
 	"errors"
 	"time"
 
-	api "github.com/OffchainLabs/prysm/v6/api/client"
-	"github.com/OffchainLabs/prysm/v6/api/client/event"
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/config/proposer"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	prysmTime "github.com/OffchainLabs/prysm/v6/time"
-	"github.com/OffchainLabs/prysm/v6/validator/client/iface"
-	"github.com/OffchainLabs/prysm/v6/validator/keymanager"
+	api "github.com/OffchainLabs/prysm/v7/api/client"
+	"github.com/OffchainLabs/prysm/v7/api/client/event"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/config/proposer"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	prysmTime "github.com/OffchainLabs/prysm/v7/time"
+	"github.com/OffchainLabs/prysm/v7/validator/client/iface"
+	"github.com/OffchainLabs/prysm/v7/validator/keymanager"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -23,7 +23,7 @@ var _ iface.Validator = (*FakeValidator)(nil)
 
 // FakeValidator for mocking.
 type FakeValidator struct {
-	CanChangeHost                     bool
+	IsReady                           bool
 	LogValidatorGainsAndLossesCalled  bool
 	SaveProtectionsCalled             bool
 	DeleteProtectionCalled            bool
@@ -37,6 +37,7 @@ type FakeValidator struct {
 	ProposeBlockCalled                bool
 	UpdateProtectionsCalled           bool
 	UpdateDutiesCalled                bool
+	RetryMissingNextDutiesCalled      bool
 	WaitForWalletInitializationCalled bool
 	NextSlotCalled                    bool
 	WaitForActivationCalled           int
@@ -52,8 +53,8 @@ type FakeValidator struct {
 	PubkeyToIndexMap                  map[[fieldparams.BLSPubkeyLength]byte]uint64
 	IndexToPubkeyMap                  map[uint64][fieldparams.BLSPubkeyLength]byte
 	WaitForChainStartCalled           int
-	AttSubmitted                      chan interface{}
-	BlockProposed                     chan interface{}
+	AttSubmitted                      chan any
+	BlockProposed                     chan any
 	AccountsChannel                   chan [][fieldparams.BLSPubkeyLength]byte
 	GenesisT                          time.Time
 	ReceiveBlocksCalled               int
@@ -91,8 +92,8 @@ func (fv *FakeValidator) WaitForKeymanagerInitialization(_ context.Context) erro
 	return nil
 }
 
-// LogSubmittedSyncCommitteeMessages --
-func (fv *FakeValidator) LogSubmittedSyncCommitteeMessages() {}
+// LogSubmissions --
+func (fv *FakeValidator) LogSubmissions(_ primitives.Slot) {}
 
 // WaitForChainStart for mocking.
 func (fv *FakeValidator) WaitForChainStart(_ context.Context) error {
@@ -151,6 +152,11 @@ func (fv *FakeValidator) UpdateDuties(_ context.Context) error {
 	return fv.UpdateDutiesRet
 }
 
+// MaybeRetryMissingNextDuties for mocking.
+func (fv *FakeValidator) MaybeRetryMissingNextDuties(_ context.Context, _ primitives.Slot) {
+	fv.RetryMissingNextDutiesCalled = true
+}
+
 // UpdateProtections for mocking.
 func (fv *FakeValidator) UpdateProtections(_ context.Context, _ uint64) error {
 	fv.UpdateProtectionsCalled = true
@@ -204,9 +210,6 @@ func (*FakeValidator) SubmitAggregateAndProof(_ context.Context, _ primitives.Sl
 // SubmitSyncCommitteeMessage for mocking.
 func (*FakeValidator) SubmitSyncCommitteeMessage(_ context.Context, _ primitives.Slot, _ [fieldparams.BLSPubkeyLength]byte) {
 }
-
-// LogSubmittedAtts for mocking.
-func (*FakeValidator) LogSubmittedAtts(_ primitives.Slot) {}
 
 // UpdateDomainDataCaches for mocking.
 func (*FakeValidator) UpdateDomainDataCaches(context.Context, primitives.Slot) {}
@@ -316,7 +319,7 @@ func (fv *FakeValidator) DeleteGraffiti(_ context.Context, _ [fieldparams.BLSPub
 	return nil
 }
 
-func (*FakeValidator) StartEventStream(_ context.Context, _ []string) {
+func (*FakeValidator) EnsureEventStream(_ context.Context, _ []string) {
 
 }
 
@@ -330,9 +333,13 @@ func (*FakeValidator) Host() string {
 	return "127.0.0.1:0"
 }
 
-func (fv *FakeValidator) FindHealthyHost(_ context.Context) bool {
-	return fv.CanChangeHost
+func (fv *FakeValidator) EnsureReady(_ context.Context) bool {
+	return fv.IsReady
 }
 
 func (fv *FakeValidator) SetTicker() {
+}
+
+// SubmitPayloadAttestation for mocking.
+func (*FakeValidator) SubmitPayloadAttestation(_ context.Context, _ primitives.Slot, _ [fieldparams.BLSPubkeyLength]byte) {
 }

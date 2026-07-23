@@ -3,7 +3,7 @@ package features
 import (
 	"time"
 
-	backfill "github.com/OffchainLabs/prysm/v6/cmd/beacon-chain/sync/backfill/flags"
+	backfill "github.com/OffchainLabs/prysm/v7/cmd/beacon-chain/sync/backfill/flags"
 	"github.com/urfave/cli/v2"
 )
 
@@ -32,10 +32,6 @@ var (
 	devModeFlag = &cli.BoolFlag{
 		Name:  "dev",
 		Usage: "Enables experimental features still in development. These features may not be stable.",
-	}
-	writeSSZStateTransitionsFlag = &cli.BoolFlag{
-		Name:  "interop-write-ssz-state-transitions",
-		Usage: "Writes SSZ states to disk after attempted state transitio.",
 	}
 	saveInvalidBlockTempFlag = &cli.BoolFlag{
 		Name:  "save-invalid-block-temp",
@@ -130,12 +126,22 @@ var (
 		Usage: "Saves beacon blocks with full execution payloads instead of execution payload headers in the database.",
 	}
 	EnableBeaconRESTApi = &cli.BoolFlag{
-		Name:  "enable-beacon-rest-api",
-		Usage: "(Experimental): Enables of the beacon REST API when querying a beacon node.",
+		Name:    "enable-beacon-rest-api",
+		Aliases: []string{"enable-rest"},
+		Usage:   "(Experimental): Enables the beacon REST API when querying a beacon node. Optional: also enabled implicitly when --beacon-rest-api-provider is set.",
+	}
+	enableHashtree = &cli.BoolFlag{
+		Name:  "enable-hashtree",
+		Usage: "(Experimental): Enables the hashtree hashing library.",
 	}
 	disableVerboseSigVerification = &cli.BoolFlag{
 		Name:  "disable-verbose-sig-verification",
 		Usage: "Disables identifying invalid signatures if batch verification fails when processing block.",
+	}
+	enableProposerPreprocessing = &cli.BoolFlag{
+		Name:  "enable-proposer-preprocessing",
+		Usage: "Enables proposer pre-processing of blocks before proposing.",
+		Value: false,
 	}
 	prepareAllPayloads = &cli.BoolFlag{
 		Name:  "prepare-all-payloads",
@@ -172,6 +178,16 @@ var (
 		Name:  "enable-experimental-attestation-pool",
 		Usage: "Enables an experimental attestation pool design.",
 	}
+	EnableStateDiff = &cli.BoolFlag{
+		Name:  "enable-state-diff",
+		Usage: "Enables the experimental state diff feature.",
+	}
+	reorgLatePayloads = &cli.BoolFlag{
+		Name:   "reorg-late-payloads",
+		Usage:  "Enables reorging late payloads.",
+		Value:  false,
+		Hidden: true,
+	}
 	// forceHeadFlag is a flag to force the head of the beacon chain to a specific block.
 	forceHeadFlag = &cli.StringFlag{
 		Name: "sync-from",
@@ -197,10 +213,19 @@ var (
 		Usage: "(Work in progress): Enables the web portal for the validator client.",
 		Value: false,
 	}
-	// disableLastEpochTargets is a flag to disable processing of attestations for old blocks.
-	disableLastEpochTargets = &cli.BoolFlag{
+	// deprecatedDisableLastEpochTargets is a flag to disable processing of attestations for old blocks.
+	deprecatedDisableLastEpochTargets = &cli.BoolFlag{
 		Name:  "disable-last-epoch-targets",
-		Usage: "Disables processing of last epoch targets.",
+		Usage: "Deprecated: disables processing of last epoch targets.",
+	}
+	// ignoreUnviableAttestations flag to skip attestations whose target state is not viable with respect to head (from lagging nodes).
+	ignoreUnviableAttestations = &cli.BoolFlag{
+		Name:  "ignore-unviable-attestations",
+		Usage: "Ignores attestations whose target state is not viable with respect to the current head (avoid expensive state replay from lagging attesters).",
+	}
+	trackEquivocations = &cli.BoolFlag{
+		Name:  "track-equivocations",
+		Usage: "Records proposer equivocations observed on gossip and marks the slot in forkchoice if the equivocation arrives before the configured early deadline.",
 	}
 )
 
@@ -234,7 +259,6 @@ var E2EValidatorFlags = []string{
 // BeaconChainFlags contains a list of all the feature flags that apply to the beacon-chain client.
 var BeaconChainFlags = combinedFlags([]cli.Flag{
 	devModeFlag,
-	writeSSZStateTransitionsFlag,
 	saveInvalidBlockTempFlag,
 	saveInvalidBlobTempFlag,
 	disableGRPCConnectionLogging,
@@ -247,8 +271,11 @@ var BeaconChainFlags = combinedFlags([]cli.Flag{
 	disableStakinContractCheck,
 	SaveFullExecutionPayloads,
 	enableStartupOptimistic,
+	ignoreUnviableAttestations,
+	trackEquivocations,
 	enableFullSSZDataLogging,
 	disableVerboseSigVerification,
+	enableProposerPreprocessing,
 	prepareAllPayloads,
 	aggregateFirstInterval,
 	aggregateSecondInterval,
@@ -260,9 +287,11 @@ var BeaconChainFlags = combinedFlags([]cli.Flag{
 	DisableQUIC,
 	EnableDiscoveryReboot,
 	enableExperimentalAttestationPool,
+	EnableStateDiff,
+	reorgLatePayloads,
 	forceHeadFlag,
 	blacklistRoots,
-	disableLastEpochTargets,
+	enableHashtree,
 }, deprecatedBeaconFlags, deprecatedFlags, upcomingDeprecation)
 
 func combinedFlags(flags ...[]cli.Flag) []cli.Flag {

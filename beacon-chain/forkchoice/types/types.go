@@ -1,10 +1,10 @@
 package types
 
 import (
-	fieldparams "github.com/OffchainLabs/prysm/v6/config/fieldparams"
-	consensus_blocks "github.com/OffchainLabs/prysm/v6/consensus-types/blocks"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
+	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
+	consensus_blocks "github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 )
 
 // Checkpoint is an array version of ethpb.Checkpoint. It is used internally in
@@ -20,4 +20,5 @@ type BlockAndCheckpoints struct {
 	Block               consensus_blocks.ROBlock
 	JustifiedCheckpoint *ethpb.Checkpoint
 	FinalizedCheckpoint *ethpb.Checkpoint
+	HasPayload          bool
 }

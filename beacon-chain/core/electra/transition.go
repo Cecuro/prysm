@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/altair"
-	e "github.com/OffchainLabs/prysm/v6/beacon-chain/core/epoch"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/core/epoch/precompute"
-	"github.com/OffchainLabs/prysm/v6/beacon-chain/state"
-	"github.com/OffchainLabs/prysm/v6/config/params"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/interfaces"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	"github.com/OffchainLabs/prysm/v6/monitoring/tracing/trace"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/altair"
+	e "github.com/OffchainLabs/prysm/v7/beacon-chain/core/epoch"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/epoch/precompute"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	"github.com/OffchainLabs/prysm/v7/config/params"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	"github.com/OffchainLabs/prysm/v7/monitoring/tracing/trace"
 	"github.com/pkg/errors"
 )
 
@@ -52,7 +52,7 @@ var (
 //	    process_participation_flag_updates(state)
 //	    process_sync_committee_updates(state)
 func ProcessEpoch(ctx context.Context, state state.BeaconState) error {
-	_, span := trace.StartSpan(ctx, "electra.ProcessEpoch")
+	ctx, span := trace.StartSpan(ctx, "electra.ProcessEpoch")
 	defer span.End()
 
 	if state == nil || state.IsNil() {
@@ -81,7 +81,7 @@ func ProcessEpoch(ctx context.Context, state state.BeaconState) error {
 	if err := ProcessRegistryUpdates(ctx, state); err != nil {
 		return errors.Wrap(err, "could not process registry updates")
 	}
-	if err := ProcessSlashings(state); err != nil {
+	if err := ProcessSlashings(ctx, state); err != nil {
 		return err
 	}
 	state, err = ProcessEth1DataReset(state)

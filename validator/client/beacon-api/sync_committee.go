@@ -7,11 +7,11 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/OffchainLabs/prysm/v6/api/apiutil"
-	"github.com/OffchainLabs/prysm/v6/api/server/structs"
-	"github.com/OffchainLabs/prysm/v6/consensus-types/primitives"
-	ethpb "github.com/OffchainLabs/prysm/v6/proto/prysm/v1alpha1"
-	"github.com/OffchainLabs/prysm/v6/time/slots"
+	"github.com/OffchainLabs/prysm/v7/api/apiutil"
+	"github.com/OffchainLabs/prysm/v7/api/server/structs"
+	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
+	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
+	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/pkg/errors"
 )
@@ -31,13 +31,13 @@ func (c *beaconApiValidatorClient) submitSyncMessage(ctx context.Context, syncMe
 		return errors.Wrap(err, "failed to marshal sync committee message")
 	}
 
-	return c.jsonRestHandler.Post(ctx, endpoint, nil, bytes.NewBuffer(marshalledJsonSyncCommitteeMessage), nil)
+	return c.handler.Post(ctx, endpoint, nil, bytes.NewBuffer(marshalledJsonSyncCommitteeMessage), nil)
 }
 
 func (c *beaconApiValidatorClient) syncMessageBlockRoot(ctx context.Context) (*ethpb.SyncMessageBlockRootResponse, error) {
 	// Get head beacon block root.
 	var resp structs.BlockRootResponse
-	if err := c.jsonRestHandler.Get(ctx, "/eth/v1/beacon/blocks/head/root", &resp); err != nil {
+	if err := c.handler.Get(ctx, "/eth/v1/beacon/blocks/head/root", &resp); err != nil {
 		return nil, err
 	}
 
@@ -82,7 +82,7 @@ func (c *beaconApiValidatorClient) syncCommitteeContribution(
 	params.Add("beacon_block_root", blockRoot)
 
 	var resp structs.ProduceSyncCommitteeContributionResponse
-	if err = c.jsonRestHandler.Get(ctx, apiutil.BuildURL("/eth/v1/validator/sync_committee_contribution", params), &resp); err != nil {
+	if err = c.handler.Get(ctx, apiutil.BuildURL("/eth/v1/validator/sync_committee_contribution", params), &resp); err != nil {
 		return nil, err
 	}
 
