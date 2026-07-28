@@ -145,6 +145,7 @@ func TestBeaconApiValidatorClient_ProposeBeaconBlockValid(t *testing.T) {
 	ctx := t.Context()
 
 	handler := mock.NewMockHandler(ctrl)
+	handler.EXPECT().Host().Return("test-host").AnyTimes()
 	handler.EXPECT().PostSSZ(
 		gomock.Any(),
 		"/eth/v2/beacon/blocks",
@@ -172,6 +173,7 @@ func TestBeaconApiValidatorClient_ProposeBeaconBlockError_ThenPass(t *testing.T)
 	ctx := t.Context()
 
 	handler := mock.NewMockHandler(ctrl)
+	handler.EXPECT().Host().Return("test-host").AnyTimes()
 	handler.EXPECT().PostSSZ(
 		gomock.Any(),
 		"/eth/v2/beacon/blocks",
@@ -314,6 +316,7 @@ func TestBeaconApiValidatorClient_ProposeBeaconBlockAllTypes(t *testing.T) {
 
 			ctx := t.Context()
 			handler := mock.NewMockHandler(ctrl)
+			handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 			if !tt.wantErr {
 				handler.EXPECT().PostSSZ(
@@ -352,7 +355,7 @@ func TestBeaconApiValidatorClient_ProposeBeaconBlockHTTPErrors(t *testing.T) {
 				Message: "block broadcast but failed validation",
 			},
 			expectJSON:   false, // No fallback for non-406 errors
-			errorMessage: "failed to submit block ssz",
+			errorMessage: "failed to submit block",
 		},
 		{
 			name: "Other HTTP error",
@@ -361,7 +364,7 @@ func TestBeaconApiValidatorClient_ProposeBeaconBlockHTTPErrors(t *testing.T) {
 				Message: "bad request",
 			},
 			expectJSON:   false, // No fallback for non-406 errors
-			errorMessage: "failed to submit block ssz",
+			errorMessage: "failed to submit block",
 		},
 	}
 
@@ -372,6 +375,7 @@ func TestBeaconApiValidatorClient_ProposeBeaconBlockHTTPErrors(t *testing.T) {
 
 			ctx := t.Context()
 			handler := mock.NewMockHandler(ctrl)
+			handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 			handler.EXPECT().PostSSZ(
 				gomock.Any(),
@@ -513,6 +517,7 @@ func TestBeaconApiValidatorClient_ProposeBeaconBlockJSONFallback(t *testing.T) {
 
 			ctx := t.Context()
 			handler := mock.NewMockHandler(ctrl)
+			handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 			// SSZ call fails with 406 to trigger JSON fallback
 			handler.EXPECT().PostSSZ(
