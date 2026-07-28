@@ -124,6 +124,7 @@ func TestSubmitPayloadAttestation(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		handler := mock.NewMockHandler(ctrl)
+		handler.EXPECT().Host().Return("test-host").AnyTimes()
 		handler.EXPECT().PostSSZ(
 			gomock.Any(),
 			payloadAttestationsEndpoint,
@@ -139,6 +140,7 @@ func TestSubmitPayloadAttestation(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		handler := mock.NewMockHandler(ctrl)
+		handler.EXPECT().Host().Return("test-host").AnyTimes()
 		handler.EXPECT().PostSSZ(gomock.Any(), payloadAttestationsEndpoint, gomock.Any(), gomock.Any()).
 			Return(nil, nil, &httputil.DefaultJsonError{Code: http.StatusUnsupportedMediaType, Message: "unsupported media type"}).Times(1)
 		handler.EXPECT().Post(
@@ -153,10 +155,32 @@ func TestSubmitPayloadAttestation(t *testing.T) {
 		require.NoError(t, client.submitPayloadAttestation(t.Context(), msg))
 	})
 
+	t.Run("second submission skips SSZ after 415", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		handler := mock.NewMockHandler(ctrl)
+		handler.EXPECT().Host().Return("test-host").AnyTimes()
+		// PostSSZ allowed exactly once: the second submission must go straight to JSON.
+		handler.EXPECT().PostSSZ(gomock.Any(), payloadAttestationsEndpoint, gomock.Any(), gomock.Any()).
+			Return(nil, nil, &httputil.DefaultJsonError{Code: http.StatusUnsupportedMediaType, Message: "unsupported media type"}).Times(1)
+		handler.EXPECT().Post(
+			gomock.Any(),
+			payloadAttestationsEndpoint,
+			headers,
+			bytes.NewBuffer(jsonBody),
+			nil,
+		).Return(nil).Times(2)
+
+		client := &beaconApiValidatorClient{handler: handler}
+		require.NoError(t, client.submitPayloadAttestation(t.Context(), msg))
+		require.NoError(t, client.submitPayloadAttestation(t.Context(), msg))
+	})
+
 	t.Run("non-415 error does not fall back", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		handler := mock.NewMockHandler(ctrl)
+		handler.EXPECT().Host().Return("test-host").AnyTimes()
 		handler.EXPECT().PostSSZ(gomock.Any(), payloadAttestationsEndpoint, gomock.Any(), gomock.Any()).
 			Return(nil, nil, errors.New("bad request")).Times(1)
 
