@@ -104,6 +104,7 @@ func TestProposeBeaconBlock_SSZ_Error(t *testing.T) {
 
 				ctx := t.Context()
 				handler := mock.NewMockHandler(ctrl)
+				handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 				// Expect PostSSZ to be called first with SSZ data
 				headers := map[string]string{
@@ -166,6 +167,7 @@ func TestProposeBeaconBlock_SSZSuccess_NoFallback(t *testing.T) {
 
 			ctx := t.Context()
 			handler := mock.NewMockHandler(ctrl)
+			handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 			// Expect PostSSZ to be called and succeed
 			headers := map[string]string{
@@ -201,6 +203,7 @@ func TestProposeBeaconBlock_NewerTypes_SSZMarshal(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		handler := mock.NewMockHandler(ctrl)
+		handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 		var blockContents structs.SignedBeaconBlockContentsDeneb
 		err := json.Unmarshal([]byte(rpctesting.DenebBlockContents), &blockContents)
@@ -232,6 +235,7 @@ func TestProposeBeaconBlock_NewerTypes_SSZMarshal(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		handler := mock.NewMockHandler(ctrl)
+		handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 		var blindedBlock structs.SignedBlindedBeaconBlockDeneb
 		err := json.Unmarshal([]byte(rpctesting.BlindedDenebBlock), &blindedBlock)
@@ -263,6 +267,7 @@ func TestProposeBeaconBlock_NewerTypes_SSZMarshal(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		handler := mock.NewMockHandler(ctrl)
+		handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 		var blockContents structs.SignedBeaconBlockContentsElectra
 		err := json.Unmarshal([]byte(rpctesting.ElectraBlockContents), &blockContents)
@@ -294,6 +299,7 @@ func TestProposeBeaconBlock_NewerTypes_SSZMarshal(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		handler := mock.NewMockHandler(ctrl)
+		handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 		var blindedBlock structs.SignedBlindedBeaconBlockElectra
 		err := json.Unmarshal([]byte(rpctesting.BlindedElectraBlock), &blindedBlock)
@@ -325,6 +331,7 @@ func TestProposeBeaconBlock_NewerTypes_SSZMarshal(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		handler := mock.NewMockHandler(ctrl)
+		handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 		var blockContents structs.SignedBeaconBlockContentsFulu
 		err := json.Unmarshal([]byte(rpctesting.FuluBlockContents), &blockContents)
@@ -356,6 +363,7 @@ func TestProposeBeaconBlock_NewerTypes_SSZMarshal(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		handler := mock.NewMockHandler(ctrl)
+		handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 		var blindedBlock structs.SignedBlindedBeaconBlockFulu
 		err := json.Unmarshal([]byte(rpctesting.BlindedFuluBlock), &blindedBlock)
@@ -589,6 +597,7 @@ func TestProposeBeaconBlock_SSZFails_406_FallbackToJSON(t *testing.T) {
 
 			ctx := t.Context()
 			handler := mock.NewMockHandler(ctrl)
+			handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 			// Expect PostSSZ to be called first and fail
 			handler.EXPECT().PostSSZ(
@@ -626,6 +635,7 @@ func TestProposeBeaconBlock_SSZFails_406_JSONFallbackFails(t *testing.T) {
 
 	ctx := t.Context()
 	handler := mock.NewMockHandler(ctrl)
+	handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 	handler.EXPECT().PostSSZ(
 		gomock.Any(),
@@ -653,7 +663,7 @@ func TestProposeBeaconBlock_SSZFails_406_JSONFallbackFails(t *testing.T) {
 	_, err := validatorClient.proposeBeaconBlock(ctx, &ethpb.GenericSignedBeaconBlock{
 		Block: generateSignedPhase0Block(),
 	})
-	assert.ErrorContains(t, "failed to submit block via JSON fallback", err)
+	assert.ErrorContains(t, "failed to submit block", err)
 }
 
 func TestProposeBeaconBlock_SSZFails_Non406_NoFallback(t *testing.T) {
@@ -680,6 +690,7 @@ func TestProposeBeaconBlock_SSZFails_Non406_NoFallback(t *testing.T) {
 
 			ctx := t.Context()
 			handler := mock.NewMockHandler(ctrl)
+			handler.EXPECT().Host().Return("test-host").AnyTimes()
 
 			// Expect PostSSZ to be called first and fail with non-406 error
 			sszHeaders := map[string]string{
@@ -711,6 +722,30 @@ func TestProposeBeaconBlock_SSZFails_Non406_NoFallback(t *testing.T) {
 			require.ErrorContains(t, "Internal server error", err)
 		})
 	}
+}
+
+func TestProposeBeaconBlock_SSZSupportTrackedPerEndpoint(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	handler := mock.NewMockHandler(ctrl)
+	handler.EXPECT().Host().Return("test-host").AnyTimes()
+
+	// A 406 on /eth/v2/beacon/blocks disables SSZ for that endpoint only:
+	// PostSSZ is allowed exactly once there, and the repeat proposal goes straight to JSON.
+	handler.EXPECT().PostSSZ(gomock.Any(), "/eth/v2/beacon/blocks", gomock.Any(), gomock.Any()).
+		Return(nil, nil, &httputil.DefaultJsonError{Code: http.StatusNotAcceptable, Message: "SSZ not supported"}).Times(1)
+	handler.EXPECT().Post(gomock.Any(), "/eth/v2/beacon/blocks", gomock.Any(), gomock.Any(), nil).Return(nil).Times(2)
+	// Blinded blocks still attempt SSZ.
+	handler.EXPECT().PostSSZ(gomock.Any(), "/eth/v2/beacon/blinded_blocks", gomock.Any(), gomock.Any()).Return(nil, nil, nil).Times(1)
+
+	validatorClient := &beaconApiValidatorClient{handler: handler}
+	_, err := validatorClient.proposeBeaconBlock(t.Context(), &ethpb.GenericSignedBeaconBlock{Block: generateSignedPhase0Block()})
+	require.NoError(t, err)
+	_, err = validatorClient.proposeBeaconBlock(t.Context(), &ethpb.GenericSignedBeaconBlock{Block: generateSignedBlindedBellatrixBlock()})
+	require.NoError(t, err)
+	_, err = validatorClient.proposeBeaconBlock(t.Context(), &ethpb.GenericSignedBeaconBlock{Block: generateSignedPhase0Block()})
+	require.NoError(t, err)
 }
 
 type badHashable struct{}
@@ -745,8 +780,11 @@ func TestBuildBlockResult_HashTreeRootError(t *testing.T) {
 }
 
 func TestBuildBlockResult_MarshalSSZError(t *testing.T) {
-	_, err := buildBlockResult("phase0", false, badMarshaler{}, okHashable{}, func() ([]byte, error) {
+	// SSZ marshaling is lazy; the error surfaces when the marshal func runs.
+	res, err := buildBlockResult("phase0", false, badMarshaler{}, okHashable{}, func() ([]byte, error) {
 		return []byte(`{}`), nil
 	})
+	require.NoError(t, err)
+	_, err = res.marshalSSZ()
 	assert.ErrorContains(t, "failed to serialize phase0 beacon block", err)
 }
