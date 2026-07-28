@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/OffchainLabs/prysm/v7/api/client/event"
@@ -28,6 +29,8 @@ type beaconApiValidatorClient struct {
 	stateValidatorsProvider StateValidatorsProvider
 	restProvider            rest.RestConnectionProvider
 	handler                 rest.Handler
+	sszUnsupportedLock      sync.RWMutex
+	sszUnsupported          map[sszSupportKey]bool
 	nodeClient              *beaconApiNodeClient
 	beaconBlockConverter    BeaconBlockConverter
 	eventStreamGuard        event.StreamGuard
