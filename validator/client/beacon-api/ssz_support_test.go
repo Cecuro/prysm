@@ -20,6 +20,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 	key := sszSupportKey{host: "host-a", endpoint: endpoint}
 	jsonBody := []byte("[]")
 	jsonFn := func() ([]byte, error) { return jsonBody, nil }
+	sszFn := func() ([]byte, error) { return []byte{1}, nil }
 
 	newHandler := func(t *testing.T) *mock.MockHandler {
 		handler := mock.NewMockHandler(gomock.NewController(t))
@@ -27,7 +28,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 		return handler
 	}
 	call := func(t *testing.T, c *beaconApiValidatorClient, unsupportedStatus int) error {
-		return c.postSSZWithFallback(t.Context(), endpoint, nil, []byte{1}, jsonFn, unsupportedStatus)
+		return c.postSSZWithFallback(t.Context(), endpoint, nil, sszFn, jsonFn, unsupportedStatus)
 	}
 	assertMarked := func(t *testing.T, c *beaconApiValidatorClient) {
 		assert.Equal(t, true, c.isSSZUnsupported(key))
@@ -84,7 +85,23 @@ func TestPostSSZWithFallback(t *testing.T) {
 		handler.EXPECT().Post(gomock.Any(), endpoint, gomock.Any(), bytes.NewBuffer(jsonBody), nil).Return(nil).Times(1)
 
 		c := &beaconApiValidatorClient{handler: handler, sszUnsupported: map[sszSupportKey]bool{key: true}}
-		require.NoError(t, call(t, c, http.StatusUnsupportedMediaType))
+		// The SSZ marshal must not even run when going straight to JSON.
+		err := c.postSSZWithFallback(t.Context(), endpoint, nil, func() ([]byte, error) {
+			t.Error("sszFn called despite known-unsupported cache entry")
+			return nil, nil
+		}, jsonFn, http.StatusUnsupportedMediaType)
+		require.NoError(t, err)
+	})
+
+	t.Run("ssz marshal error surfaces without cache write", func(t *testing.T) {
+		handler := newHandler(t)
+
+		c := &beaconApiValidatorClient{handler: handler}
+		err := c.postSSZWithFallback(t.Context(), endpoint, nil, func() ([]byte, error) {
+			return nil, errors.New("ssz marshal broke")
+		}, jsonFn, http.StatusUnsupportedMediaType)
+		require.ErrorContains(t, "ssz marshal broke", err)
+		assertNotMarked(t, c)
 	})
 
 	t.Run("unsupported on another endpoint still tries ssz", func(t *testing.T) {
@@ -148,7 +165,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 		handler := newHandler(t)
 
 		c := &beaconApiValidatorClient{handler: handler, sszUnsupported: map[sszSupportKey]bool{key: true}}
-		err := c.postSSZWithFallback(t.Context(), endpoint, nil, []byte{1}, func() ([]byte, error) {
+		err := c.postSSZWithFallback(t.Context(), endpoint, nil, sszFn, func() ([]byte, error) {
 			return nil, errors.New("marshal broke")
 		}, http.StatusUnsupportedMediaType)
 		require.ErrorContains(t, "marshal broke", err)

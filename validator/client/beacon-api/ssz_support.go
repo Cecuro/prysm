@@ -15,15 +15,15 @@ type sszSupportKey struct {
 	endpoint string
 }
 
-// postSSZWithFallback posts sszBody to endpoint, falling back to JSON from jsonFn when the
-// beacon node rejects the SSZ request body with unsupportedStatus.
+// postSSZWithFallback posts the body from sszFn to endpoint, falling back to JSON from jsonFn
+// when the beacon node rejects the SSZ request body with unsupportedStatus.
 //
 // NOTE: Only rejections are cached: storing a success changes no behavior and could overwrite a concurrent rejection.
 func (c *beaconApiValidatorClient) postSSZWithFallback(
 	ctx context.Context,
 	endpoint string,
 	headers map[string]string,
-	sszBody []byte,
+	sszFn func() ([]byte, error),
 	jsonFn func() ([]byte, error),
 	unsupportedStatus int,
 ) error {
@@ -42,19 +42,23 @@ func (c *beaconApiValidatorClient) postSSZWithFallback(
 	key := sszSupportKey{host: c.handler.Host(), endpoint: endpoint}
 
 	// If the BN had previously rejected SSZ for this endpoint,
-	// go straight to JSON without trying SSZ again.
+	// go straight to JSON without marshaling or trying SSZ at all.
 	if c.isSSZUnsupported(key) {
 		return postJSON()
 	}
 
-	_, _, err := c.handler.PostSSZ(ctx, endpoint, headers, bytes.NewBuffer(sszBody))
+	sszBody, err := sszFn()
+	if err != nil {
+		return fmt.Errorf("marshal SSZ body: %w", err)
+	}
+	_, _, err = c.handler.PostSSZ(ctx, endpoint, headers, bytes.NewBuffer(sszBody))
 	if err == nil {
 		return nil
 	}
 
 	errJson := &httputil.DefaultJsonError{}
 	if !errors.As(err, &errJson) || errJson.Code != unsupportedStatus {
-		return err
+		return fmt.Errorf("post SSZ: %w", err)
 	}
 
 	c.markSSZUnsupported(key, generation)
