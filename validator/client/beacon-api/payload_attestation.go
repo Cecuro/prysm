@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/OffchainLabs/prysm/v7/api"
@@ -51,5 +50,5 @@ func (c *beaconApiValidatorClient) submitPayloadAttestation(ctx context.Context,
 		return json.Marshal([]*structs.PayloadAttestationMessage{structs.PayloadAttestationMessageFromConsensus(msg)})
 	}
 
-	return c.postSSZWithFallback(ctx, payloadAttestationsEndpoint, headers, msg.MarshalSSZ, jsonFn, http.StatusUnsupportedMediaType)
+	return c.postSSZWithFallback(ctx, payloadAttestationsEndpoint, headers, msg.MarshalSSZ, jsonFn)
 }

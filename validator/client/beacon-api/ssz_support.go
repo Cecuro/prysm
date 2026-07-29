@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/OffchainLabs/prysm/v7/network/httputil"
 	"github.com/pkg/errors"
@@ -16,7 +17,7 @@ type sszSupportKey struct {
 }
 
 // postSSZWithFallback posts the body from sszFn to endpoint, falling back to JSON from jsonFn
-// when the beacon node rejects the SSZ request body with unsupportedStatus.
+// when the beacon node rejects the SSZ request body with 406 Not Acceptable or 415 Unsupported Media Type.
 //
 // NOTE: Only rejections are cached: storing a success changes no behavior and could overwrite a concurrent rejection.
 func (c *beaconApiValidatorClient) postSSZWithFallback(
@@ -25,7 +26,6 @@ func (c *beaconApiValidatorClient) postSSZWithFallback(
 	headers map[string]string,
 	sszFn func() ([]byte, error),
 	jsonFn func() ([]byte, error),
-	unsupportedStatus int,
 ) error {
 	postJSON := func() error {
 		body, err := jsonFn()
@@ -57,7 +57,7 @@ func (c *beaconApiValidatorClient) postSSZWithFallback(
 	}
 
 	errJson := &httputil.DefaultJsonError{}
-	if !errors.As(err, &errJson) || errJson.Code != unsupportedStatus {
+	if !errors.As(err, &errJson) || (errJson.Code != http.StatusNotAcceptable && errJson.Code != http.StatusUnsupportedMediaType) {
 		return fmt.Errorf("post SSZ: %w", err)
 	}
 

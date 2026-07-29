@@ -169,9 +169,9 @@ func (c *beaconApiValidatorClient) proposeBeaconBlock(ctx context.Context, in *e
 
 	headers := map[string]string{"Eth-Consensus-Version": res.consensusVersion}
 
-	// Try PostSSZ first with SSZ data, falling back to JSON on 406 (Not Acceptable)
+	// Try PostSSZ first with SSZ data, falling back to JSON when the BN rejects SSZ bodies
 	if res.marshalSSZ != nil {
-		if err := c.postSSZWithFallback(ctx, endpoint, headers, res.marshalSSZ, res.marshalJSON, http.StatusNotAcceptable); err != nil {
+		if err := c.postSSZWithFallback(ctx, endpoint, headers, res.marshalSSZ, res.marshalJSON); err != nil {
 			return nil, errors.Wrap(err, "failed to submit block")
 		}
 	} else if res.marshalJSON == nil {

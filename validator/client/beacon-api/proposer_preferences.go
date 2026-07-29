@@ -3,7 +3,6 @@ package beacon_api
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 
 	"github.com/OffchainLabs/prysm/v7/api"
 	"github.com/OffchainLabs/prysm/v7/api/server/structs"
@@ -36,7 +35,6 @@ func (c *beaconApiValidatorClient) submitSignedProposerPreferences(ctx context.C
 		headers,
 		sszFn,
 		jsonFn,
-		http.StatusUnsupportedMediaType,
 	)
 }
 

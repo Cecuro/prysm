@@ -27,8 +27,8 @@ func TestPostSSZWithFallback(t *testing.T) {
 		handler.EXPECT().Host().Return("host-a").AnyTimes()
 		return handler
 	}
-	call := func(t *testing.T, c *beaconApiValidatorClient, unsupportedStatus int) error {
-		return c.postSSZWithFallback(t.Context(), endpoint, nil, sszFn, jsonFn, unsupportedStatus)
+	call := func(t *testing.T, c *beaconApiValidatorClient) error {
+		return c.postSSZWithFallback(t.Context(), endpoint, nil, sszFn, jsonFn)
 	}
 	assertMarked := func(t *testing.T, c *beaconApiValidatorClient) {
 		assert.Equal(t, true, c.isSSZUnsupported(key))
@@ -42,19 +42,21 @@ func TestPostSSZWithFallback(t *testing.T) {
 		handler.EXPECT().PostSSZ(gomock.Any(), endpoint, gomock.Any(), gomock.Any()).Return(nil, nil, nil).Times(1)
 
 		c := &beaconApiValidatorClient{handler: handler}
-		require.NoError(t, call(t, c, http.StatusUnsupportedMediaType))
+		require.NoError(t, call(t, c))
 		assertNotMarked(t, c)
 	})
 
 	t.Run("ssz rejection marks unsupported and falls back to JSON", func(t *testing.T) {
-		handler := newHandler(t)
-		handler.EXPECT().PostSSZ(gomock.Any(), endpoint, gomock.Any(), gomock.Any()).
-			Return(nil, nil, &httputil.DefaultJsonError{Code: http.StatusUnsupportedMediaType, Message: "unsupported media type"}).Times(1)
-		handler.EXPECT().Post(gomock.Any(), endpoint, gomock.Any(), bytes.NewBuffer(jsonBody), nil).Return(nil).Times(1)
+		for _, code := range []int{http.StatusNotAcceptable, http.StatusUnsupportedMediaType} {
+			handler := newHandler(t)
+			handler.EXPECT().PostSSZ(gomock.Any(), endpoint, gomock.Any(), gomock.Any()).
+				Return(nil, nil, &httputil.DefaultJsonError{Code: code, Message: "ssz not supported"}).Times(1)
+			handler.EXPECT().Post(gomock.Any(), endpoint, gomock.Any(), bytes.NewBuffer(jsonBody), nil).Return(nil).Times(1)
 
-		c := &beaconApiValidatorClient{handler: handler}
-		require.NoError(t, call(t, c, http.StatusUnsupportedMediaType))
-		assertMarked(t, c)
+			c := &beaconApiValidatorClient{handler: handler}
+			require.NoError(t, call(t, c))
+			assertMarked(t, c)
+		}
 	})
 
 	t.Run("ssz rejection marks unsupported even when JSON fallback fails", func(t *testing.T) {
@@ -64,7 +66,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 		handler.EXPECT().Post(gomock.Any(), endpoint, gomock.Any(), gomock.Any(), nil).Return(errors.New("json post failed")).Times(1)
 
 		c := &beaconApiValidatorClient{handler: handler}
-		require.ErrorContains(t, "json post failed", call(t, c, http.StatusUnsupportedMediaType))
+		require.ErrorContains(t, "json post failed", call(t, c))
 		assertMarked(t, c)
 	})
 
@@ -75,7 +77,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 		handler.EXPECT().Post(gomock.Any(), endpoint, gomock.Any(), gomock.Any(), nil).Return(nil).Times(1)
 
 		c := &beaconApiValidatorClient{handler: handler}
-		require.NoError(t, call(t, c, http.StatusUnsupportedMediaType))
+		require.NoError(t, call(t, c))
 		assertMarked(t, c)
 	})
 
@@ -89,7 +91,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 		err := c.postSSZWithFallback(t.Context(), endpoint, nil, func() ([]byte, error) {
 			t.Error("sszFn called despite known-unsupported cache entry")
 			return nil, nil
-		}, jsonFn, http.StatusUnsupportedMediaType)
+		}, jsonFn)
 		require.NoError(t, err)
 	})
 
@@ -99,7 +101,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 		c := &beaconApiValidatorClient{handler: handler}
 		err := c.postSSZWithFallback(t.Context(), endpoint, nil, func() ([]byte, error) {
 			return nil, errors.New("ssz marshal broke")
-		}, jsonFn, http.StatusUnsupportedMediaType)
+		}, jsonFn)
 		require.ErrorContains(t, "ssz marshal broke", err)
 		assertNotMarked(t, c)
 	})
@@ -109,7 +111,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 		handler.EXPECT().PostSSZ(gomock.Any(), endpoint, gomock.Any(), gomock.Any()).Return(nil, nil, nil).Times(1)
 
 		c := &beaconApiValidatorClient{handler: handler, sszUnsupported: map[sszSupportKey]bool{{host: "host-a", endpoint: "/other/endpoint"}: true}}
-		require.NoError(t, call(t, c, http.StatusUnsupportedMediaType))
+		require.NoError(t, call(t, c))
 	})
 
 	t.Run("unsupported on another host still tries ssz", func(t *testing.T) {
@@ -117,7 +119,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 		handler.EXPECT().PostSSZ(gomock.Any(), endpoint, gomock.Any(), gomock.Any()).Return(nil, nil, nil).Times(1)
 
 		c := &beaconApiValidatorClient{handler: handler, sszUnsupported: map[sszSupportKey]bool{{host: "host-b", endpoint: endpoint}: true}}
-		require.NoError(t, call(t, c, http.StatusUnsupportedMediaType))
+		require.NoError(t, call(t, c))
 	})
 
 	t.Run("other error returns without fallback or cache write", func(t *testing.T) {
@@ -126,7 +128,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 			Return(nil, nil, &httputil.DefaultJsonError{Code: http.StatusInternalServerError, Message: "boom"}).Times(1)
 
 		c := &beaconApiValidatorClient{handler: handler}
-		require.ErrorContains(t, "boom", call(t, c, http.StatusUnsupportedMediaType))
+		require.ErrorContains(t, "boom", call(t, c))
 		assertNotMarked(t, c)
 	})
 
@@ -141,7 +143,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 		handler.EXPECT().Post(gomock.Any(), endpoint, gomock.Any(), gomock.Any(), nil).Return(nil).Times(1)
 
 		c := &beaconApiValidatorClient{handler: handler, restProvider: provider}
-		require.NoError(t, call(t, c, http.StatusUnsupportedMediaType))
+		require.NoError(t, call(t, c))
 		assertNotMarked(t, c)
 	})
 
@@ -156,7 +158,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 		handler.EXPECT().Post(gomock.Any(), endpoint, gomock.Any(), gomock.Any(), nil).Return(nil).Times(1)
 
 		c := &beaconApiValidatorClient{handler: handler}
-		require.NoError(t, call(t, c, http.StatusUnsupportedMediaType))
+		require.NoError(t, call(t, c))
 		assertNotMarked(t, c)
 		assert.Equal(t, false, c.isSSZUnsupported(sszSupportKey{host: "host-b", endpoint: endpoint}))
 	})
@@ -167,7 +169,7 @@ func TestPostSSZWithFallback(t *testing.T) {
 		c := &beaconApiValidatorClient{handler: handler, sszUnsupported: map[sszSupportKey]bool{key: true}}
 		err := c.postSSZWithFallback(t.Context(), endpoint, nil, sszFn, func() ([]byte, error) {
 			return nil, errors.New("marshal broke")
-		}, http.StatusUnsupportedMediaType)
+		})
 		require.ErrorContains(t, "marshal broke", err)
 	})
 }

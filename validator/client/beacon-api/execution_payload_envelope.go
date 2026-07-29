@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -80,7 +79,7 @@ func (c *beaconApiValidatorClient) publishExecutionPayloadEnvelope(
 			}
 			return json.Marshal(j)
 		}
-		if err := c.postSSZWithFallback(ctx, endpoint, envelopeHeaders(false), envelope.MarshalSSZ, jsonFn, http.StatusNotAcceptable); err != nil {
+		if err := c.postSSZWithFallback(ctx, endpoint, envelopeHeaders(false), envelope.MarshalSSZ, jsonFn); err != nil {
 			return nil, errors.Wrap(err, "could not publish execution payload envelope")
 		}
 		return &empty.Empty{}, nil
@@ -98,7 +97,7 @@ func (c *beaconApiValidatorClient) publishExecutionPayloadEnvelope(
 		}
 		return json.Marshal(j)
 	}
-	if err := c.postSSZWithFallback(ctx, endpoint, envelopeHeaders(true), contents.MarshalSSZ, jsonFn, http.StatusNotAcceptable); err != nil {
+	if err := c.postSSZWithFallback(ctx, endpoint, envelopeHeaders(true), contents.MarshalSSZ, jsonFn); err != nil {
 		return nil, errors.Wrap(err, "could not publish execution payload envelope contents")
 	}
 	return &empty.Empty{}, nil
